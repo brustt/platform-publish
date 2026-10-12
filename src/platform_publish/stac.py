@@ -49,10 +49,12 @@ def build_item(project: dict, event: dict, rasters: dict, root: str, updated: st
             "brustt:kind": layer["kind"],
             "brustt:order": order,
             "brustt:shown": layer.get("shown", True),
-            "brustt:categories": layer["categories"],
             "brustt:attribution": layer.get("attribution", project["attribution"]),
             "brustt:licence": layer.get("licence", project["licence"]),
         }
+        for hint in ("categories", "colormap", "rgb"):
+            if hint in layer:
+                a[f"brustt:{hint}"] = layer[hint]
         for src, dst in (("licence_url", "brustt:licence_url"), ("source_url", "brustt:source_url"),
                          ("acquired", "brustt:acquired")):
             if layer.get(src):

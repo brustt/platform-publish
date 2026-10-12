@@ -58,8 +58,8 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
         for k in ("licence", "attribution"):
             if not layer.get(k):
                 err(f"auxiliary Layers must carry {k}")
-    cats = layer["categories"]
-    values = [c["value"] for c in cats]
+    categorical = "categories" in layer
+    values = [c["value"] for c in layer.get("categories", [])]
     if len(set(values)) != len(values):
         err("duplicate values in categories")
 
@@ -68,7 +68,7 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
         err(f"file not found: {layer['file']}")
         return
     try:
-        info = inspect(path)
+        info = inspect(path, categorical)
     except Exception as e:
         err(f"cannot read raster: {e}")
         return
@@ -77,12 +77,22 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
         err(p)
     if info.nodata is None or (isinstance(info.nodata, float) and math.isnan(info.nodata)):
         err("no-data value is not declared in the file")
-    else:
+    elif categorical:
         known = set(values) | {info.nodata}
         stray = info.overview_values - known
         if stray:
             err(f"overviews contain values {sorted(stray)} that are not categories: "
                 "use nearest or mode resampling")
+    if "colormap" in layer and layer["colormap"].get("band", 1) > info.count:
+        err(f"colormap band {layer['colormap']['band']} but the file has {info.count} band(s)")
+    if "rgb" in layer:
+        if max(layer["rgb"]["bands"]) > info.count:
+            err(f"rgb bands {layer['rgb']['bands']} but the file has {info.count} band(s)")
+    for key in ("colormap", "rgb"):
+        for r in ([layer[key]["range"]] if key == "colormap" and key in layer else
+                  layer.get(key, {}).get("ranges", [])):
+            if r[0] >= r[1]:
+                err(f"{key} range {r} must have min < max")
     # a declared value that disagrees with the file is an error
     if "nodata" in layer and info.nodata is not None and layer["nodata"] != info.nodata:
         err(f"declared nodata {layer['nodata']} but file has {info.nodata}")

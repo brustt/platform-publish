@@ -133,3 +133,12 @@ def test_no_credentials_stored(tmp_path):
     import platform_publish, pathlib
     src = "".join(p.read_text() for p in pathlib.Path(platform_publish.__file__).parent.glob("*.py"))
     assert "aws_secret_access_key" not in src and "aws_access_key_id" not in src
+
+
+def test_continuous_hints_carried_into_item(s3, make_project):
+    rgb = {"bands": [1, 2, 3], "ranges": [[-25, 0], [-30, -5], [0, 1]]}
+    p, e = make_project(raster={"count": 3, "dtype": "float32", "nodata": -9999.0, "overview": "AVERAGE"},
+                        categories=None, rgb=rgb, shown=False)
+    do_push(s3, (p, e))
+    a = get(s3, "flood-detection/saintes-2026-02/saintes-2026-02.json")["assets"]["flood-extent"]
+    assert a["brustt:rgb"] == rgb and a["brustt:shown"] is False and "brustt:categories" not in a

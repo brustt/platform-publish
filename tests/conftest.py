@@ -11,11 +11,15 @@ BUCKET = "brustt-test"
 ROOT = "https://data.example.test"
 
 
-def write_raster(path, *, cog=True, overview="NEAREST", nodata=255, crs="EPSG:32630", seed=0):
+def write_raster(path, *, cog=True, overview="NEAREST", nodata=255, crs="EPSG:32630", seed=0, count=1, dtype="uint8"):
     rng = np.random.default_rng(seed)
-    data = rng.choice([0, 10], size=(1, 512, 512), p=[0.6, 0.4]).astype("uint8")
-    data[:, :16, :16] = 255
-    profile = dict(driver="GTiff", height=512, width=512, count=1, dtype="uint8", crs=crs,
+    if dtype == "float32":  # continuous
+        data = rng.normal(-15, 5, size=(count, 512, 512)).astype("float32")
+        data[:, :16, :16] = nodata
+    else:
+        data = rng.choice([0, 10], size=(1, 512, 512), p=[0.6, 0.4]).astype("uint8")
+        data[:, :16, :16] = 255
+    profile = dict(driver="GTiff", height=512, width=512, count=count, dtype=dtype, crs=crs,
                    transform=from_origin(500000, 5000000, 10, 10), nodata=nodata)
     src = path if not cog else path.with_suffix(".src.tif")
     with rasterio.open(src, "w", **profile) as dst:
@@ -35,6 +39,7 @@ def event_doc(**layer_over):
              "categories": [{"value": 0, "color": "#000000", "label": "No flood", "transparent": True},
                             {"value": 10, "color": "#1f78b4", "label": "Flooded"}]}
     layer.update(layer_over)
+    layer = {k: v for k, v in layer.items() if v is not None}  # None drops a key
     return {"event": "saintes-2026-02", "title": "Saintes flood", "start": "2026-02-15",
             "end": "2026-02-19", "layers": [layer]}
 

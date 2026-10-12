@@ -79,3 +79,41 @@ def test_declared_values_that_agree_are_fine(make_project):
 
 def test_missing_file(make_project):
     assert "not found" in errs(validate(*make_project(file="nope.tif")))
+
+
+CONT = dict(categories=None, nodata=-9999.0)
+
+
+def cont(raster_over=None, **layer):
+    return dict(raster={"count": 3, "dtype": "float32", "nodata": -9999.0, "overview": "AVERAGE",
+                        **(raster_over or {})}, **{"categories": None, **layer})
+
+
+def test_continuous_colormap_single_band(make_project):
+    rep = validate(*make_project(**cont(raster_over={"count": 1}, colormap={"name": "viridis", "range": [-25, 0]})))
+    assert rep.ok, rep.errors  # average overviews are fine on a continuous raster
+
+
+def test_continuous_rgb_three_bands(make_project):
+    rgb = {"bands": [1, 2, 3], "ranges": [[-25, 0], [-30, -5], [0, 1]]}
+    assert validate(*make_project(**cont(rgb=rgb))).ok
+
+
+def test_rgb_band_beyond_file(make_project):
+    rgb = {"bands": [1, 2, 4], "ranges": [[-25, 0], [-30, -5], [0, 1]]}
+    assert "band" in errs(validate(*make_project(**cont(rgb=rgb))))
+
+
+def test_bad_range(make_project):
+    assert "min < max" in errs(validate(*make_project(**cont(colormap={"name": "viridis", "range": [5, 5]}))))
+
+
+def test_exactly_one_display_hint(make_project):
+    assert not validate(*make_project(**cont())).ok  # none
+    both = {"colormap": {"name": "viridis", "range": [0, 1]}, "categories": [{"value": 0, "color": "#000000", "label": "a"}]}
+    assert not validate(*make_project(raster={"dtype": "float32", "nodata": -9999.0}, **both)).ok
+
+
+def test_continuous_still_needs_nodata(make_project):
+    rep = validate(*make_project(**cont(raster_over={"nodata": None}, colormap={"name": "viridis", "range": [-25, 0]})))
+    assert "no-data" in errs(rep)

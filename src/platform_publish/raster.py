@@ -16,6 +16,7 @@ class RasterInfo:
     footprint: dict  # GeoJSON polygon, WGS84
     sha256: str
     size: int
+    count: int = 1
     media_type: str = "image/tiff; application=geotiff; profile=cloud-optimized"
     problems: list[str] = field(default_factory=list)  # COG / overview problems
     overview_values: set = field(default_factory=set)  # distinct values found in overviews
@@ -43,7 +44,7 @@ def _footprint(src) -> tuple[list[float], dict]:
     return [west, south, east, north], {"type": "Polygon", "coordinates": [ring]}
 
 
-def inspect(path: Path) -> RasterInfo:
+def inspect(path: Path, categorical: bool = True) -> RasterInfo:
     problems: list[str] = []
     with rasterio.open(path) as src:
         if src.driver != "GTiff":
@@ -65,14 +66,14 @@ def inspect(path: Path) -> RasterInfo:
             problems.append("overviews are external (.ovr), they must be internal")
         base_values: set = set()
         ov_values: set = set()
-        if src.count >= 1:
+        if categorical and src.count >= 1:
             base_values = set(np.unique(src.read(1)).tolist())
             for f in ovr:
                 a = src.read(1, out_shape=(max(1, src.height // f), max(1, src.width // f)),
                              resampling=rasterio.enums.Resampling.nearest)
                 ov_values |= set(np.unique(a).tolist())
         return RasterInfo(
-            crs=crs, nodata=src.nodata, bbox=bbox, footprint=footprint,
+            crs=crs, nodata=src.nodata, count=src.count, bbox=bbox, footprint=footprint,
             sha256=sha256_of(path), size=path.stat().st_size,
             problems=problems, overview_values=ov_values, base_values=base_values,
         )

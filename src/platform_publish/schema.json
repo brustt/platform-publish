@@ -115,8 +115,7 @@
               "file",
               "role",
               "kind",
-              "title",
-              "categories"
+              "title"
             ],
             "additionalProperties": false,
             "properties": {
@@ -185,8 +184,82 @@
               },
               "checksum": {
                 "type": "string"
+              },
+              "colormap": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "range"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "band": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "range": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              "rgb": {
+                "type": "object",
+                "required": [
+                  "bands",
+                  "ranges"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "bands": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "ranges": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  }
+                }
               }
-            }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "categories"
+                ]
+              },
+              {
+                "required": [
+                  "colormap"
+                ]
+              },
+              {
+                "required": [
+                  "rgb"
+                ]
+              }
+            ]
           }
         }
       }
