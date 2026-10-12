@@ -117,3 +117,21 @@ def test_exactly_one_display_hint(make_project):
 def test_continuous_still_needs_nodata(make_project):
     rep = validate(*make_project(**cont(raster_over={"nodata": None}, colormap={"name": "viridis", "range": [-25, 0]})))
     assert "no-data" in errs(rep)
+
+
+def test_resampling_tag_checked_when_present(make_project, monkeypatch):
+    import importlib
+    v = importlib.import_module("platform_publish.validate")
+    real = v.inspect
+
+    def tagged(tag):
+        def f(path, categorical=True):
+            info = real(path, categorical)
+            info.overview_resampling = tag
+            return info
+        return f
+    paths = make_project()
+    monkeypatch.setattr(v, "inspect", tagged("average"))
+    assert "average" in errs(validate(*paths))
+    monkeypatch.setattr(v, "inspect", tagged("mode"))
+    assert validate(*paths).ok

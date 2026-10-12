@@ -17,6 +17,7 @@ class RasterInfo:
     sha256: str
     size: int
     count: int = 1
+    overview_resampling: str | None = None  # from the rio_overview tag, when the producer wrote it
     media_type: str = "image/tiff; application=geotiff; profile=cloud-optimized"
     problems: list[str] = field(default_factory=list)  # COG / overview problems
     overview_values: set = field(default_factory=set)  # distinct values found in overviews
@@ -72,8 +73,9 @@ def inspect(path: Path, categorical: bool = True) -> RasterInfo:
                 a = src.read(1, out_shape=(max(1, src.height // f), max(1, src.width // f)),
                              resampling=rasterio.enums.Resampling.nearest)
                 ov_values |= set(np.unique(a).tolist())
+        tag = src.tags(ns="rio_overview").get("resampling")
         return RasterInfo(
-            crs=crs, nodata=src.nodata, count=src.count, bbox=bbox, footprint=footprint,
+            crs=crs, nodata=src.nodata, count=src.count, overview_resampling=tag.lower() if tag else None, bbox=bbox, footprint=footprint,
             sha256=sha256_of(path), size=path.stat().st_size,
             problems=problems, overview_values=ov_values, base_values=base_values,
         )

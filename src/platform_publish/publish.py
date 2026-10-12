@@ -114,3 +114,42 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
         _put_json(s3, bucket, k["catalog"], cat)
         res.registered.append(k["catalog"])
     return res
+
+
+def withdraw(project_slug, event_slug, *, bucket, s3=None, profile=None, endpoint_url=None,
+             dry_run=False) -> PushResult:
+    """Reverse registration: drop the link from collection.json first, then delete the Event's prefix."""
+    k = stac.keys(project_slug, event_slug)
+    prefix = f"{project_slug}/{event_slug}/"
+    s3 = s3 or make_client(profile, endpoint_url)
+    col = _get_json(s3, bucket, k["collection"])
+    if col is None:
+        raise PushRefused([f"no such Project '{project_slug}' in the bucket"])
+    item_name = f"/{event_slug}/{event_slug}.json"
+    links = [l for l in col["links"] if not (l["rel"] == "item" and l["href"].endswith(item_name))]
+    listed = [o["Key"] for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
+              for o in page.get("Contents", [])]
+    res = PushResult(dry_run=dry_run)
+    unlink = len(links) != len(col["links"])
+    if not unlink and not listed:
+        raise PushRefused([f"Event '{event_slug}' is not published in '{project_slug}'"])
+    if dry_run:
+        res.registered += [k["collection"]] if unlink else []
+        res.uploaded += listed  # keys that would be deleted
+        return res
+    if unlink:
+        col["links"] = links
+        items = [l for l in links if l["rel"] == "item"]
+        if items:
+            col["extent"] = {
+                "spatial": {"bbox": [[min(l["bbox"][0] for l in items), min(l["bbox"][1] for l in items),
+                                      max(l["bbox"][2] for l in items), max(l["bbox"][3] for l in items)]]},
+                "temporal": {"interval": [[min(l["start_datetime"] for l in items),
+                                           max(l["end_datetime"] for l in items)]]},
+            }
+        _put_json(s3, bucket, k["collection"], col)  # link first, so nothing half-deleted is visible
+        res.registered.append(k["collection"])
+    for i in range(0, len(listed), 1000):
+        s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": x} for x in listed[i:i + 1000]]})
+    res.uploaded = listed  # reused field: keys deleted
+    return res

@@ -142,3 +142,44 @@ def test_continuous_hints_carried_into_item(s3, make_project):
     do_push(s3, (p, e))
     a = get(s3, "flood-detection/saintes-2026-02/saintes-2026-02.json")["assets"]["flood-extent"]
     assert a["brustt:rgb"] == rgb and a["brustt:shown"] is False and "brustt:categories" not in a
+
+
+def keys_of(s3):
+    return sorted(o["Key"] for o in s3.list_objects_v2(Bucket=BUCKET).get("Contents", []))
+
+
+def test_withdraw_unlinks_then_deletes_prefix(s3, make_project, monkeypatch):
+    from platform_publish import withdraw
+    do_push(s3, make_project())
+    order = []
+    po, do = s3.put_object, s3.delete_objects
+    monkeypatch.setattr(s3, "put_object", lambda **kw: (order.append(("put", kw["Key"])), po(**kw))[1])
+    monkeypatch.setattr(s3, "delete_objects", lambda **kw: (order.append(("del", None)), do(**kw))[1])
+    res = withdraw("flood-detection", "saintes-2026-02", bucket=BUCKET, s3=s3)
+    assert order[0] == ("put", "flood-detection/collection.json") and order[1][0] == "del"
+    assert keys_of(s3) == ["catalog.json", "flood-detection/collection.json"]
+    col = get(s3, "flood-detection/collection.json")
+    assert not [l for l in col["links"] if l["rel"] == "item"]
+    assert len(res.uploaded) == 2
+
+
+def test_withdraw_keeps_other_events(s3, make_project):
+    from platform_publish import withdraw
+    do_push(s3, make_project())
+    do_push(s3, make_project(event_over={"event": "nantes-2026-03"}))
+    withdraw("flood-detection", "saintes-2026-02", bucket=BUCKET, s3=s3)
+    col = get(s3, "flood-detection/collection.json")
+    assert [l["href"] for l in col["links"] if l["rel"] == "item"] == [f"{ROOT}/flood-detection/nantes-2026-03/nantes-2026-03.json"]
+    assert any(k.startswith("flood-detection/nantes-2026-03/") for k in keys_of(s3))
+
+
+def test_withdraw_dry_run_and_unknown(s3, make_project):
+    from platform_publish import withdraw
+    do_push(s3, make_project())
+    before = keys_of(s3)
+    withdraw("flood-detection", "saintes-2026-02", bucket=BUCKET, s3=s3, dry_run=True)
+    assert keys_of(s3) == before
+    with pytest.raises(PushRefused):
+        withdraw("flood-detection", "nowhere-2026-01", bucket=BUCKET, s3=s3)
+    with pytest.raises(PushRefused):
+        withdraw("nope", "saintes-2026-02", bucket=BUCKET, s3=s3)
