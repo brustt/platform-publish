@@ -1,0 +1,14 @@
+event: saintes-2026-02
+title: Saintes flood, February 2026
+start: 2026-02-15
+end: 2026-02-19
+layers:
+  - slug: flood-extent
+    file: ../outputs/saintes-2026-02/flood-extent.tif
+    role: result
+    kind: raster
+    title: Flood extent
+    shown: true
+    categories:
+      - {value: 0, color: "#000000", label: No flood, transparent: true}
+      - {value: 1, color: "#1f78b4", label: Flooded}

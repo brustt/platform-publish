@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "platform-publish"
+version = "0.1.0"
+description = "Validate and Publish Earth-observation results to the brustt Platform bucket as static STAC"
+requires-python = ">=3.10"
+dependencies = ["boto3", "jsonschema", "pyyaml", "rasterio", "numpy", "pyproj", "requests"]
+
+[project.optional-dependencies]
+test = ["pytest", "moto[s3]"]
+
+[project.scripts]
+platform-publish = "platform_publish.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/platform_publish"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
