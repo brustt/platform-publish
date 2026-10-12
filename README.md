@@ -18,7 +18,7 @@ Concurrent pushes are unsupported.
 Version 0.1 covers raster Layers (categorical, or continuous with a colour map or an RGB band mapping); vector Layers follow.
 
 `platform-publish withdraw <project> <event> --bucket ...` unlinks an Event from `collection.json`, then deletes its prefix.
-See `examples/` for manifests and `src/platform_publish/schema.json` for the schema.
+Full guide: [docs/publish.md](docs/publish.md). Examples in `examples/`; schema in `src/platform_publish/schema.json`.
 
 ## Tests
 `pip install -e '.[test]' && pytest` (moto, no network). If GDAL/PROJ env vars from another install
