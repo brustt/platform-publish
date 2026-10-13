@@ -17,6 +17,7 @@ def acl_public(s3, key):
 
 
 def do_push(s3, paths, **kw):
+    kw.setdefault("verify", False)
     return push(*paths, bucket=BUCKET, s3=s3, root_url=ROOT, **kw)
 
 
@@ -215,3 +216,62 @@ def test_withdraw_dry_run_and_unknown(s3, make_project):
         withdraw("flood-detection", "nowhere-2026-01", bucket=BUCKET, s3=s3)
     with pytest.raises(PushRefused):
         withdraw("nope", "saintes-2026-02", bucket=BUCKET, s3=s3)
+
+
+class FakeResponse:
+    def __init__(self, status, cors=True):
+        self.status_code = status
+        self.headers = {"Access-Control-Allow-Origin": "*"} if cors else {}
+
+
+def test_url_check_passes_with_200_206_and_cors(s3, make_project):
+    seen = []
+
+    def get(url, headers):
+        seen.append((url, headers.get("Range")))
+        return FakeResponse(206 if "Range" in headers else 200)
+    res = do_push(s3, make_project(), verify=True, http_get=get)
+    assert res.url_problems == []
+    assert (f"{ROOT}/flood-detection/saintes-2026-02/flood-extent.tif", "bytes=0-1") in seen
+    assert (f"{ROOT}/flood-detection/saintes-2026-02/saintes-2026-02.json", None) in seen
+
+
+def test_url_check_failures_are_reported_and_nothing_rolled_back(s3, make_project):
+    def get(url, headers):
+        if "Range" in headers:
+            return FakeResponse(200)  # provider ignores Range
+        if url.endswith(".json"):
+            return FakeResponse(200, cors=False)
+        raise OSError("boom")
+    res = do_push(s3, make_project(), verify=True, http_get=get)
+    assert any("expected 206" in m for m in res.url_problems)
+    assert any("CORS" in m for m in res.url_problems)
+    assert get_ok(s3)
+
+
+def get_ok(s3):
+    return get(s3, "flood-detection/collection.json")["links"]
+
+
+def test_url_problems_give_cli_exit_2(s3, make_project, capsys, monkeypatch):
+    from platform_publish import cli, publish
+    monkeypatch.setattr(cli, "push", lambda *a, **k: publish.PushResult(url_problems=["x: expected 200, got 403"]))
+    p, e = make_project()
+    assert cli.main(["push", str(p), str(e), "--bucket", BUCKET]) == 2
+    assert "nothing was rolled back" in capsys.readouterr().err
+
+
+def test_dry_run_prints_every_destination_and_checks_no_url(s3, make_project):
+    res = do_push(s3, make_project(), dry_run=True, verify=True, http_get=lambda *a: 1 / 0)
+    assert "flood-detection/saintes-2026-02/saintes-2026-02.json" in res.uploaded
+    assert s3.list_objects_v2(Bucket=BUCKET).get("KeyCount") == 0
+
+
+def test_credential_check_stops_before_any_upload(s3, make_project, monkeypatch):
+    def deny(**kw):
+        from botocore.exceptions import ClientError
+        raise ClientError({"Error": {"Code": "AccessDenied", "Message": "no acl"}}, "PutObject")
+    monkeypatch.setattr(s3, "put_object", deny)
+    with pytest.raises(PushRefused, match="public-read"):
+        do_push(s3, make_project())
+    assert s3.list_objects_v2(Bucket=BUCKET).get("KeyCount") == 0

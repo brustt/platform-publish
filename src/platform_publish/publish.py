@@ -23,6 +23,7 @@ class PushResult:
     skipped: list[str] = field(default_factory=list)
     registered: list[str] = field(default_factory=list)  # catalog files written
     dry_run: bool = False
+    url_problems: list[str] = field(default_factory=list)  # failed public-URL checks; nothing is rolled back
 
 
 def make_client(profile=None, endpoint_url=None):
@@ -64,6 +65,29 @@ def check_can_set_public_read(s3, bucket):
         raise PushRefused([f"credential cannot write public-read objects: {e}"]) from e
 
 
+ORIGIN = "https://brustt.xyz"
+
+
+def check_public_urls(urls, ranged, get=None, origin=ORIGIN):
+    """Report (never raise) what is wrong with the public URLs: 200 (206 on a range request) and CORS."""
+    get = get or (lambda u, h: requests.get(u, headers=h, timeout=30, stream=True))
+    problems = []
+    for u in urls:
+        headers = {"Origin": origin}
+        want = 200
+        if u in ranged:
+            headers["Range"] = "bytes=0-1"
+            want = 206
+        try:
+            r = get(u, headers)
+        except Exception as e:
+            problems.append(f"{u}: not reachable ({e})")
+            continue
+        if r.status_code != want:
+            problems.append(f"{u}: expected {want}, got {r.status_code}")
+        elif r.headers.get("Access-Control-Allow-Origin") not in ("*", origin):
+            problems.append(f"{u}: no CORS header for {origin}")
+    return problems
 def _layer_files(rep, layer, p, e, base):
     """(key, local path, sha256, content type) for each file of a Layer: one for a raster, two for a vector."""
     s = layer["slug"]
@@ -94,7 +118,7 @@ def url_reachable(url: str, timeout: float = 10.0) -> str | None:
 
 
 def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_url=None,
-         root_url=DEFAULT_ROOT_URL, dry_run=False, now=None) -> PushResult:
+         root_url=DEFAULT_ROOT_URL, dry_run=False, now=None, verify=True, http_get=None) -> PushResult:
     rep = validate(project_yaml, event_yaml)
     if not rep.ok:
         raise PushRefused(rep.errors)  # no override
@@ -147,6 +171,11 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
     if cat_changed:
         _put_json(s3, bucket, k["catalog"], cat)
         res.registered.append(k["catalog"])
+
+    if verify:  # after registration: report only, nothing is rolled back
+        layer_urls = [stac.url(root_url, stac.layer_key(p, e, l["slug"])) for l in event["layers"]]
+        res.url_problems = check_public_urls(layer_urls + [stac.url(root_url, k["item"])],
+                                             set(layer_urls), http_get)
     return res
 
 
