@@ -143,8 +143,14 @@
               "shown": {
                 "type": "boolean"
               },
+              "source": {
+                "enum": [
+                  "copernicus-sentinel"
+                ]
+              },
               "acquired": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
               },
               "categories": {
                 "type": "array",
