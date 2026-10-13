@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from . import licence, sources
 from .manifest import Manifests, load_yaml, prefill_source_defaults, schema_errors
 from .raster import RasterInfo, inspect
 from .vector import VectorInfo, inspect_vector
