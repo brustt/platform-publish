@@ -3,7 +3,10 @@
 Contract changes are additive only. Update `docs/publish.md` in the same change as any behaviour change,
 and bump its "Applies to" line at release.
 
-## Unreleased
+## v0.2.0 (2026-10-13)
+- Fix: `validate` (and so `push`) crashed with a `NameError` because `licence` and `sources` were not imported.
+- Fix: the post-push URL check requested `<layer>.tif` for a vector Layer (404, exit 2); it now checks the
+  PMTiles and the GeoParquet.
 - `push` checks public URLs after registering (200, 206 on range, CORS); failures reported, exit 2, no rollback.
   `--skip-url-check` opts out.
 - Vector Layers (`kind: vector`): a GeoParquet (`file`) plus a PMTiles (`tiles`), always both, one Layer in the Item

@@ -1,6 +1,6 @@
 # Publishing a result with `platform-publish`
 
-> Applies to **platform-publish v0.1.0**. To read the page for another version, open this file at that git tag
+> Applies to **platform-publish v0.2.0**. To read the page for another version, open this file at that git tag
 > (GitHub: switch the branch/tag selector). Changes between versions are listed in [`CHANGELOG.md`](../CHANGELOG.md).
 
 `platform-publish` checks your result files and uploads them to the Platform bucket as static STAC.
@@ -10,9 +10,9 @@ You never write STAC: the root catalog, your Project's Collection and the Event'
 ## 1. Install
 
 ```bash
-pip install git+https://github.com/brustt/platform-publish@v0.1.0
+pip install git+https://github.com/brustt/platform-publish@v0.2.0
 # or, for a non-Python Project:
-pipx install git+https://github.com/brustt/platform-publish@v0.1.0
+pipx install git+https://github.com/brustt/platform-publish@v0.2.0
 ```
 
 ## 2. Credentials
@@ -214,8 +214,6 @@ push("publish/project.yaml", "publish/saintes-2026-02.publish.yaml", bucket="...
 
 ## Limits in this version
 
-- Raster Layers only; vector Layers (GeoParquet + PMTiles) are not supported yet.
 - Vector Layers are never converted: produce the GeoParquet and the PMTiles yourself (e.g. with `tippecanoe`).
-- The post-push check of public URLs (200, 206 range, CORS) is not implemented; check by hand with `curl`.
 - No locking: **concurrent pushes to the same bucket are unsupported.**
 - Contract changes are additive only: a newer release reads everything an older one wrote.

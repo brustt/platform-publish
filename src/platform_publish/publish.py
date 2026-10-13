@@ -173,7 +173,9 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
         res.registered.append(k["catalog"])
 
     if verify:  # after registration: report only, nothing is rolled back
-        layer_urls = [stac.url(root_url, stac.layer_key(p, e, l["slug"])) for l in event["layers"]]
+        exts = {"raster": ["tif"], "vector": ["pmtiles", "parquet"]}  # a vector Layer is two files
+        layer_urls = [stac.url(root_url, stac.layer_key(p, e, l["slug"], ext))
+                      for l in event["layers"] for ext in exts[l["kind"]]]
         res.url_problems = check_public_urls(layer_urls + [stac.url(root_url, k["item"])],
                                              set(layer_urls), http_get)
     return res

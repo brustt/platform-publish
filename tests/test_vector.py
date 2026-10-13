@@ -276,3 +276,23 @@ def test_dry_run_lists_both_files(s3, make_vector_project):
     assert any(k.endswith("buildings.parquet") for k in res.uploaded)
     assert any(k.endswith("buildings.pmtiles") for k in res.uploaded)
     assert s3.list_objects_v2(Bucket=BUCKET).get("KeyCount", 0) == 0
+
+
+class _Response:
+    def __init__(self, status):
+        self.status_code = status
+        self.headers = {"Access-Control-Allow-Origin": "*"}
+
+
+def test_post_push_url_check_requests_both_files_of_a_vector_layer(s3, make_vector_project):
+    seen = []
+
+    def http_get(url, headers):
+        seen.append(url)
+        return _Response(206 if "Range" in headers else 200)
+    res = do_push(s3, make_vector_project(), verify=True, http_get=http_get)
+    base = f"{ROOT}/flood-detection/saintes-2026-02"
+    assert res.url_problems == []
+    assert f"{base}/buildings.pmtiles" in seen
+    assert f"{base}/buildings.parquet" in seen
+    assert f"{base}/buildings.tif" not in seen
