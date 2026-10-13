@@ -16,35 +16,65 @@ def keys(project_slug: str, event_slug: str) -> dict:
     }
 
 
-def layer_key(project_slug: str, event_slug: str, layer_slug: str) -> str:
-    return f"{project_slug}/{event_slug}/{layer_slug}.tif"
+def layer_key(project_slug: str, event_slug: str, layer_slug: str, ext: str = "tif") -> str:
+    return f"{project_slug}/{event_slug}/{layer_slug}.{ext}"
 
 
 def url(root: str, key: str) -> str:
     return f"{root.rstrip('/')}/{key}"
 
 
-def build_item(project: dict, event: dict, rasters: dict, root: str, updated: str) -> dict:
+def _vector_assets(root, p, e, layer, info) -> dict:
+    """A vector Layer is one asset: PMTiles to display, with the GeoParquet as its download."""
+    s = layer["slug"]
+    style = dict(layer.get("style", {}))
+    if "layer" not in style and info.layer_names:
+        style["layer"] = info.layer_names[0]  # validated: exactly one when not declared
+    a = {
+        "href": url(root, layer_key(p, e, s, "pmtiles")),
+        "type": info.pmtiles_type,
+        "file:checksum": "1220" + info.pmtiles_sha256,
+        "file:size": info.pmtiles_size,
+        "brustt:download": {
+            "href": url(root, layer_key(p, e, s, "parquet")),
+            "type": info.parquet_type,
+            "file:checksum": "1220" + info.parquet_sha256,
+            "file:size": info.parquet_size,
+            "proj:code": info.crs,
+        },
+        "brustt:vector_layers": info.layer_names,
+    }
+    if style:
+        a["brustt:style"] = style
+    return a
+
+
+def build_item(project: dict, event: dict, rasters: dict, root: str, updated: str, vectors: dict | None = None) -> dict:
     p, e = project["slug"], event["event"]
     k = keys(p, e)
-    # the Event's footprint is the union extent of its Layers; with one result raster it is that footprint
-    first = event["layers"][0]["slug"]
-    infos = [rasters[l["slug"]] for l in event["layers"]]
+    vectors = vectors or {}
+    # the Event's footprint is the union extent of its Layers; with one Layer it is that footprint
+    infos = [rasters.get(l["slug"]) or vectors[l["slug"]] for l in event["layers"]]
     bbox = [min(i.bbox[0] for i in infos), min(i.bbox[1] for i in infos),
             max(i.bbox[2] for i in infos), max(i.bbox[3] for i in infos)]
-    geometry = rasters[first].footprint if len(infos) == 1 else _bbox_polygon(bbox)
+    geometry = infos[0].footprint if len(infos) == 1 else _bbox_polygon(bbox)
     assets = {}
     for order, layer in enumerate(event["layers"]):
-        info = rasters[layer["slug"]]
-        a = {
-            "href": url(root, layer_key(p, e, layer["slug"])),
-            "type": info.media_type,
+        if layer["kind"] == "vector":
+            a = _vector_assets(root, p, e, layer, vectors[layer["slug"]])
+        else:
+            info = rasters[layer["slug"]]
+            a = {
+                "href": url(root, layer_key(p, e, layer["slug"])),
+                "type": info.media_type,
+                "file:checksum": "1220" + info.sha256,
+                "file:size": info.size,
+                "proj:code": info.crs,
+                "file:nodata": info.nodata,
+            }
+        a |= {
             "title": layer["title"],
             "roles": ["data", layer["role"]],
-            "file:checksum": "1220" + info.sha256,
-            "file:size": info.size,
-            "proj:code": info.crs,
-            "file:nodata": info.nodata,
             "brustt:role": layer["role"],
             "brustt:kind": layer["kind"],
             "brustt:order": order,

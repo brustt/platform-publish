@@ -15,7 +15,7 @@ Credentials come from boto3's default chain (use a named profile); nothing is st
 Item, then writes the link in `collection.json` (and `/catalog.json` for a new Project) last.
 Concurrent pushes are unsupported.
 
-Version 0.1 covers raster Layers (categorical, or continuous with a colour map or an RGB band mapping); vector Layers follow.
+Version 0.1 covers raster Layers (categorical, or continuous with a colour map or an RGB band mapping), plus vector Layers (a GeoParquet and PMTiles pair) and Auxiliary Layers.
 
 `platform-publish withdraw <project> <event> --bucket ...` unlinks an Event from `collection.json`, then deletes its prefix.
 Full guide: [docs/publish.md](docs/publish.md). Examples in `examples/`; schema in `src/platform_publish/schema.json`.
