@@ -10,6 +10,12 @@ and bump its "Applies to" line at release.
 - `auxiliary` Layers: licence and attribution required; prefilled for OpenStreetMap `source_url`s (editable).
 - `push` checks every `licence_url` is reachable; `validate` stays offline.
 - New dependency: `pyarrow`.
+- `imagery` Layers: optional `acquired` date (`YYYY-MM-DD`, must be a real date) and their own attribution
+  and licence; imagery inherits the Project defaults like a result.
+- `source: copernicus-sentinel` prefills attribution, licence, licence URL and source URL; owner values win.
+- `rgb` bands must be three different bands.
+- **Stricter than v0.1.0:** `licence` (Project and Layer) must be an SPDX identifier or `custom`, and
+  `acquired` must be a date. A v0.1.0 manifest with a free-text licence is now refused.
 
 ## v0.1.0
 - `validate`, `push`, `withdraw` commands and library API.

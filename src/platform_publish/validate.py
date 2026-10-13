@@ -1,6 +1,7 @@
 """Offline validation of a Project and one Event manifest."""
 import math
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 from .manifest import Manifests, load_yaml, prefill_source_defaults, schema_errors
@@ -37,6 +38,9 @@ def validate(project_yaml: str | Path, event_yaml: str | Path) -> ValidationRepo
         return rep  # structure must be right before we look at files
 
     rep.notes += prefill_source_defaults(event)
+    event = sources.with_suggestions(event)
+    if not licence.is_valid(project["licence"]):
+        rep.errors.append(f"project.yaml: {licence.problem(project['licence'])}")
     if event["start"] > event["end"]:
         rep.errors.append("event start is after end")
     slugs = [l["slug"] for l in event["layers"]]
@@ -65,6 +69,8 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
     if layer["kind"] == "vector":
         _check_vector(rep, layer, base, err)
         return
+    if "licence" in layer and not licence.is_valid(layer["licence"]):
+        err(licence.problem(layer["licence"]))
     categorical = "categories" in layer
     values = [c["value"] for c in layer.get("categories", [])]
     if len(set(values)) != len(values):
@@ -95,7 +101,14 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
                 "use nearest or mode resampling")
     if "colormap" in layer and layer["colormap"].get("band", 1) > info.count:
         err(f"colormap band {layer['colormap']['band']} but the file has {info.count} band(s)")
+    if "acquired" in layer:
+        try:
+            date.fromisoformat(layer["acquired"])
+        except ValueError:
+            err(f"acquired '{layer['acquired']}' is not a real date (use YYYY-MM-DD)")
     if "rgb" in layer:
+        if len(set(layer["rgb"]["bands"])) != 3:
+            err(f"rgb bands {layer['rgb']['bands']} must be three different bands")
         if max(layer["rgb"]["bands"]) > info.count:
             err(f"rgb bands {layer['rgb']['bands']} but the file has {info.count} band(s)")
     for key in ("colormap", "rgb"):
