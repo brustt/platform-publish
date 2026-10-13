@@ -121,10 +121,15 @@ platform-publish push publish/project.yaml publish/saintes-2026-02.publish.yaml 
 | `--profile` | `AWS_PROFILE` / default chain |
 | `--root-url` | `https://data.brustt.xyz` (prefix of every address written in the Item) |
 | `--dry-run` | prints what would upload and register; touches nothing |
+| `--skip-url-check` | skip the public-URL check after registering |
 
 Order of operations: validate (**any error refuses the push; there is no override**) → check the credential can
 set `public-read` → upload each Layer → upload the Item → write the link in `collection.json` (and `/catalog.json`
 for a new Project) **last**. A partial upload is therefore never visible on the site.
+
+After registering, `push` requests the public URL of each Layer (a range request, expecting 206) and of the Item
+(expecting 200), and checks the CORS header. Failures are printed as warnings and the command exits 2; **nothing is
+rolled back** (the Published Result stays registered; fix the bucket and re-run, or `withdraw`).
 
 **Re-running** is safe: Layers whose SHA-256 already matches are skipped. **Updating** a recomputed Event is the
 same command; it overwrites the same keys and bumps the Item's last-updated time. There are no versions.
@@ -152,6 +157,5 @@ push("publish/project.yaml", "publish/saintes-2026-02.publish.yaml", bucket="...
 ## Limits in this version
 
 - Raster Layers only; vector Layers (GeoParquet + PMTiles) are not supported yet.
-- The post-push check of public URLs (200, 206 range, CORS) is not implemented; check by hand with `curl`.
 - No locking: **concurrent pushes to the same bucket are unsupported.**
 - Contract changes are additive only: a newer release reads everything an older one wrote.

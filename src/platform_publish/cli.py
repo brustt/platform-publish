@@ -24,6 +24,7 @@ def main(argv=None) -> int:
     pp.add_argument("--endpoint-url", default=os.environ.get("PLATFORM_PUBLISH_ENDPOINT_URL"))
     pp.add_argument("--root-url", default=DEFAULT_ROOT_URL)
     pp.add_argument("--dry-run", action="store_true")
+    pp.add_argument("--skip-url-check", action="store_true", help="do not check the public URLs after registering")
     for sp in (wp,):
         sp.add_argument("--bucket", default=os.environ.get("PLATFORM_PUBLISH_BUCKET"))
         sp.add_argument("--profile", default=os.environ.get("AWS_PROFILE"))
@@ -57,7 +58,7 @@ def main(argv=None) -> int:
         ap.error("--bucket (or PLATFORM_PUBLISH_BUCKET) is required")
     try:
         res = push(a.project, a.event, bucket=a.bucket, profile=a.profile, endpoint_url=a.endpoint_url,
-                   root_url=a.root_url, dry_run=a.dry_run)
+                   root_url=a.root_url, dry_run=a.dry_run, verify=not a.skip_url_check)
     except PushRefused as e:
         print(e, file=sys.stderr)
         return 1
@@ -68,6 +69,11 @@ def main(argv=None) -> int:
         print(f"skipped {k} (checksum matches)")
     for k in res.registered:
         print(f"{'would register' if res.dry_run else 'registered'} {k}")
+    for m in res.url_problems:
+        print(f"warning: {m}", file=sys.stderr)
+    if res.url_problems:
+        print("registered, but the Published Result is not fully reachable; nothing was rolled back", file=sys.stderr)
+        return 2
     return 0
 
 
