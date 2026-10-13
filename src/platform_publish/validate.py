@@ -77,11 +77,11 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
         err(p)
     if info.nodata is None or (isinstance(info.nodata, float) and math.isnan(info.nodata)):
         err("no-data value is not declared in the file")
-    elif categorical:
+    if categorical:
         if info.overview_resampling and info.overview_resampling not in ("nearest", "mode"):
             err(f"overviews were built with '{info.overview_resampling}' resampling: "
                 "use nearest or mode on a categorical raster")
-        known = set(values) | {info.nodata}
+        known = set(values) | ({info.nodata} if info.nodata is not None else set())
         stray = info.overview_values - known
         if stray:
             err(f"overviews contain values {sorted(stray)} that are not categories: "

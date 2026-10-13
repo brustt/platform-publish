@@ -125,28 +125,24 @@ def withdraw(project_slug, event_slug, *, bucket, s3=None, profile=None, endpoin
     col = _get_json(s3, bucket, k["collection"])
     if col is None:
         raise PushRefused([f"no such Project '{project_slug}' in the bucket"])
-    item_name = f"/{event_slug}/{event_slug}.json"
-    links = [l for l in col["links"] if not (l["rel"] == "item" and l["href"].endswith(item_name))]
+    item_suffix = "/" + k["item"]
+    links = [l for l in col["links"] if not (l["rel"] == "item" and l["href"].endswith(item_suffix))]
     listed = [o["Key"] for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
               for o in page.get("Contents", [])]
     res = PushResult(dry_run=dry_run)
     unlink = len(links) != len(col["links"])
-    if not unlink and not listed:
-        raise PushRefused([f"Event '{event_slug}' is not published in '{project_slug}'"])
+    if not unlink:
+        msg = f"Event '{event_slug}' is not published in '{project_slug}'"
+        if listed:
+            msg += f" ({len(listed)} unlinked objects remain under '{prefix}'; nothing was changed)"
+        raise PushRefused([msg])
     if dry_run:
         res.registered += [k["collection"]] if unlink else []
         res.uploaded += listed  # keys that would be deleted
         return res
     if unlink:
         col["links"] = links
-        items = [l for l in links if l["rel"] == "item"]
-        if items:
-            col["extent"] = {
-                "spatial": {"bbox": [[min(l["bbox"][0] for l in items), min(l["bbox"][1] for l in items),
-                                      max(l["bbox"][2] for l in items), max(l["bbox"][3] for l in items)]]},
-                "temporal": {"interval": [[min(l["start_datetime"] for l in items),
-                                           max(l["end_datetime"] for l in items)]]},
-            }
+        col["extent"] = stac.link_extent(links)
         _put_json(s3, bucket, k["collection"], col)  # link first, so nothing half-deleted is visible
         res.registered.append(k["collection"])
     for i in range(0, len(listed), 1000):

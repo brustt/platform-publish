@@ -97,13 +97,26 @@ def new_collection(project: dict, root: str) -> dict:
         "type": "Collection", "stac_version": STAC_VERSION, "id": p,
         "title": project["title"], "description": project["description"],
         "license": project["licence"],
-        "extent": {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [[None, None]]}},
+        "extent": link_extent([]),
         "brustt:attribution": project["attribution"],
         "links": [
             {"rel": "self", "href": url(root, f"{p}/collection.json"), "type": "application/json"},
             {"rel": "root", "href": url(root, "catalog.json"), "type": "application/json"},
             {"rel": "parent", "href": url(root, "catalog.json"), "type": "application/json"},
         ],
+    }
+
+
+def link_extent(links: list[dict]) -> dict:
+    """Collection extent from its item links; the world and an open interval when none remain."""
+    items = [l for l in links if l["rel"] == "item"]
+    if not items:
+        return {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [[None, None]]}}
+    return {
+        "spatial": {"bbox": [[min(l["bbox"][0] for l in items), min(l["bbox"][1] for l in items),
+                              max(l["bbox"][2] for l in items), max(l["bbox"][3] for l in items)]]},
+        "temporal": {"interval": [[min(l["start_datetime"] for l in items),
+                                   max(l["end_datetime"] for l in items)]]},
     }
 
 
@@ -121,13 +134,7 @@ def update_collection(col: dict, project: dict, item: dict, root: str) -> dict:
                   "start_datetime": item["properties"]["start_datetime"],
                   "end_datetime": item["properties"]["end_datetime"]})
     col["links"] = links
-    items = [l for l in links if l["rel"] == "item"]
-    col["extent"] = {
-        "spatial": {"bbox": [[min(l["bbox"][0] for l in items), min(l["bbox"][1] for l in items),
-                              max(l["bbox"][2] for l in items), max(l["bbox"][3] for l in items)]]},
-        "temporal": {"interval": [[min(l["start_datetime"] for l in items),
-                                   max(l["end_datetime"] for l in items)]]},
-    }
+    col["extent"] = link_extent(links)
     return col
 
 

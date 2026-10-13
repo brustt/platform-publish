@@ -163,6 +163,28 @@ def test_withdraw_unlinks_then_deletes_prefix(s3, make_project, monkeypatch):
     assert len(res.uploaded) == 2
 
 
+def test_withdraw_last_event_resets_extent(s3, make_project):
+    from platform_publish import withdraw
+    do_push(s3, make_project())
+    withdraw("flood-detection", "saintes-2026-02", bucket=BUCKET, s3=s3)
+    ext = get(s3, "flood-detection/collection.json")["extent"]
+    assert ext["spatial"]["bbox"] == [[-180, -90, 180, 90]]
+    assert ext["temporal"]["interval"] == [[None, None]]
+
+
+def test_withdraw_matches_event_exactly(s3, make_project):
+    from platform_publish import withdraw
+    do_push(s3, make_project(event_over={"event": "nantes-2026-03"}))
+    col = get(s3, "flood-detection/collection.json")
+    col["links"].append({"rel": "item", "href": f"{ROOT}/other/nantes-2026-03/nantes-2026-03.json",
+                         "bbox": [0, 0, 1, 1], "start_datetime": "2026-03-01T00:00:00Z",
+                         "end_datetime": "2026-03-02T00:00:00Z"})
+    s3.put_object(Bucket=BUCKET, Key="flood-detection/collection.json", Body=json.dumps(col).encode())
+    withdraw("flood-detection", "nantes-2026-03", bucket=BUCKET, s3=s3)
+    hrefs = [l["href"] for l in get(s3, "flood-detection/collection.json")["links"] if l["rel"] == "item"]
+    assert hrefs == [f"{ROOT}/other/nantes-2026-03/nantes-2026-03.json"]
+
+
 def test_withdraw_keeps_other_events(s3, make_project):
     from platform_publish import withdraw
     do_push(s3, make_project())
@@ -171,6 +193,16 @@ def test_withdraw_keeps_other_events(s3, make_project):
     col = get(s3, "flood-detection/collection.json")
     assert [l["href"] for l in col["links"] if l["rel"] == "item"] == [f"{ROOT}/flood-detection/nantes-2026-03/nantes-2026-03.json"]
     assert any(k.startswith("flood-detection/nantes-2026-03/") for k in keys_of(s3))
+
+
+def test_withdraw_unregistered_event_changes_nothing(s3, make_project):
+    from platform_publish import withdraw
+    do_push(s3, make_project())
+    s3.put_object(Bucket=BUCKET, Key="flood-detection/orphan-2026-01/stray.tif", Body=b"x")
+    before = keys_of(s3)
+    with pytest.raises(PushRefused):
+        withdraw("flood-detection", "orphan-2026-01", bucket=BUCKET, s3=s3)
+    assert keys_of(s3) == before
 
 
 def test_withdraw_dry_run_and_unknown(s3, make_project):

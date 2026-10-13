@@ -135,3 +135,17 @@ def test_resampling_tag_checked_when_present(make_project, monkeypatch):
     assert "average" in errs(validate(*paths))
     monkeypatch.setattr(v, "inspect", tagged("mode"))
     assert validate(*paths).ok
+
+
+def test_resampling_tag_checked_without_nodata(make_project, monkeypatch):
+    import importlib
+    v = importlib.import_module("platform_publish.validate")
+    real = v.inspect
+
+    def tagged(path, categorical=True):
+        info = real(path, categorical)
+        info.overview_resampling = "average"
+        return info
+    monkeypatch.setattr(v, "inspect", tagged)
+    e = errs(validate(*make_project(raster={"nodata": None})))
+    assert "no-data" in e and "average" in e
