@@ -64,7 +64,20 @@ layers:                          # draw order = list order
     categories:                  # categorical raster: also the legend
       - {value: 0, color: "#000000", label: No flood, transparent: true}
       - {value: 1, color: "#1f78b4", label: Flooded}
+  - slug: s1-before
+    file: ../outputs/saintes-2026-02/s1-before.tif
+    role: imagery                # a Layer to look at, not a result
+    kind: raster
+    title: Sentinel-1 before
+    shown: false
+    acquired: 2026-01-12         # when the imagery was taken
+    source: copernicus-sentinel  # prefills attribution and licence, see below
+    rgb:
+      bands: [1, 2, 3]
+      ranges: [[-25, 0], [-30, -5], [0, 1]]
 ```
+
+A manifest lists any number of Layers. Draw order is the order of the list and is kept in the Item.
 
 ### Display hint: exactly one per Layer
 
@@ -74,16 +87,29 @@ layers:                          # draw order = list order
 | `colormap` | continuous, one band | `name` (colour map name), `range: [min, max]`, optional `band` (default 1) |
 | `rgb` | continuous, three bands | `bands: [r, g, b]` (1-based), `ranges: [[min,max], [min,max], [min,max]]` |
 
-Derived bands (e.g. a VV/VH ratio) must be precomputed into the COG; there is no band maths.
+Anything else is a validation error: `rgb` needs three different bands and one range per band, and a Layer cannot
+carry a colour map and `rgb` together. Derived bands (e.g. a VV/VH ratio) must be precomputed into the COG;
+there is no band maths.
 
 ### Other Layer fields
 
 | Field | Notes |
 |---|---|
 | `shown` | default visibility; default `true` |
-| `acquired` | optional acquisition date (imagery) |
-| `attribution`, `licence`, `licence_url`, `source_url` | `result` Layers inherit the Project defaults; `imagery` only when different; **`auxiliary` Layers must set `licence` and `attribution`** |
+| `acquired` | optional acquisition date, `YYYY-MM-DD` (imagery) |
+| `attribution`, `licence`, `licence_url`, `source_url` | `result` and `imagery` Layers inherit the Project defaults for any field they leave out; **`auxiliary` Layers must set `licence` and `attribution`**. `licence` is an [SPDX identifier](https://spdx.org/licenses/) (`CC-BY-4.0`, `ODbL-1.0`) or `custom`, for the Project and for every Layer |
+| `source` | optional: `copernicus-sentinel` prefills the fields below for fields you leave out; anything you write wins |
 | `nodata`, `crs`, `bbox`, `media_type`, `checksum` | optional; inferred from the file. **If you declare one and it disagrees with the file, validation fails.** `bbox` is WGS84 `[west, south, east, north]`; `checksum` is the file's SHA-256 |
+
+With `source: copernicus-sentinel` the suggestion is:
+
+| Field | Suggested value |
+|---|---|
+| `attribution` | `Contains modified Copernicus Sentinel data <year>`, the year of `acquired`, else of the Event `start` |
+| `licence` / `licence_url` | `custom` / the Copernicus Sentinel data legal notice |
+| `source_url` | `https://dataspace.copernicus.eu` |
+
+`compare` names two Layers of the Event (before, then after); a slug that is not a Layer of the Event is refused.
 
 ## 6. Prepare the files
 
