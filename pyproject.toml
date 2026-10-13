@@ -7,7 +7,7 @@ name = "platform-publish"
 version = "0.1.0"
 description = "Validate and Publish Earth-observation results to the brustt Platform bucket as static STAC"
 requires-python = ">=3.10"
-dependencies = ["boto3", "jsonschema", "pyyaml", "rasterio", "numpy", "pyproj", "requests"]
+dependencies = ["boto3", "jsonschema", "pyyaml", "rasterio", "numpy", "pyproj", "requests", "pyarrow"]
 
 [project.optional-dependencies]
 test = ["pytest", "moto[s3]"]

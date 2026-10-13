@@ -66,7 +66,7 @@ layers:                          # draw order = list order
       - {value: 1, color: "#1f78b4", label: Flooded}
 ```
 
-### Display hint: exactly one per Layer
+### Display hint: exactly one per raster Layer (vector Layers use `style`, below)
 
 | Hint | Use | Fields |
 |---|---|---|
@@ -85,7 +85,40 @@ Derived bands (e.g. a VV/VH ratio) must be precomputed into the COG; there is no
 | `attribution`, `licence`, `licence_url`, `source_url` | `result` Layers inherit the Project defaults; `imagery` only when different; **`auxiliary` Layers must set `licence` and `attribution`** |
 | `nodata`, `crs`, `bbox`, `media_type`, `checksum` | optional; inferred from the file. **If you declare one and it disagrees with the file, validation fails.** `bbox` is WGS84 `[west, south, east, north]`; `checksum` is the file's SHA-256 |
 
+### Vector Layers and Auxiliary Layers
+
+A vector Layer (`kind: vector`) is always a **pair**: `file` is the **GeoParquet** (download and source of the
+tiles), `tiles` is the **PMTiles** (display, read from the bucket by range requests). Both are required; they are
+one Layer in the Item (the PMTiles is its address, the GeoParquet its `brustt:download`).
+
+```yaml
+  - slug: buildings
+    file: ../outputs/saintes-2026-02/buildings.parquet
+    tiles: ../outputs/saintes-2026-02/buildings.pmtiles
+    role: auxiliary
+    kind: vector
+    title: Building footprints
+    source_url: https://www.openstreetmap.org/copyright   # OSM source: attribution and licence are prefilled
+    style:                       # all optional, all static; nothing data-driven
+      layer: buildings           # internal PMTiles layer name
+      fill_color: "#ff8800"
+      line_color: "#333333"
+      opacity: 0.6               # 0 to 1
+```
+
+- The **internal layer names are read from the PMTiles**. `style.layer` is optional when the archive has one
+  layer, required when it has several, and an error if it names a layer the PMTiles do not contain.
+- **`auxiliary` Layers** (context data such as OpenStreetMap building footprints) must carry non-empty
+  `attribution` and `licence`; give `licence_url` and `source_url` too.
+- **OpenStreetMap prefill:** when `source_url` points at `openstreetmap.org` or `geofabrik.de`, a missing
+  `attribution` (`© OpenStreetMap contributors`), `licence` (`ODbL-1.0`) and `licence_url` are filled in, and
+  `validate` prints a note. Anything you write yourself wins.
+- `nodata` does not apply to vectors. `crs`, `bbox`, `media_type` and `checksum`, if declared, are compared with the
+  GeoParquet (`bbox`: the PMTiles bounds) and must agree.
+
 ## 6. Prepare the files
+
+Each vector Layer needs a GeoParquet (with the `geo` metadata) and a PMTiles of vector (MVT) tiles.
 
 Each raster must be:
 - a valid **Cloud-Optimized GeoTIFF** (tiled, COG layout) with **internal overviews**, in its native CRS;
@@ -104,7 +137,7 @@ platform-publish validate publish/project.yaml publish/saintes-2026-02.publish.y
 ```
 
 Checks the JSON Schema, slug formats, at least one `result` Layer, `compare` slugs, auxiliary licence/attribution,
-COG validity and overviews, no-data, categorical overview content (and the `rio_overview.resampling` tag when the
+vector pairs (both files present, valid GeoParquet and vector PMTiles, internal layer names), COG validity and overviews, no-data, categorical overview content (and the `rio_overview.resampling` tag when the
 file has one), band indexes and ranges, and declared-versus-file values. Prints each problem and exits 1 on any.
 
 ## 8. Push
@@ -122,8 +155,10 @@ platform-publish push publish/project.yaml publish/saintes-2026-02.publish.yaml 
 | `--root-url` | `https://data.brustt.xyz` (prefix of every address written in the Item) |
 | `--dry-run` | prints what would upload and register; touches nothing |
 
-Order of operations: validate (**any error refuses the push; there is no override**) → check the credential can
-set `public-read` → upload each Layer → upload the Item → write the link in `collection.json` (and `/catalog.json`
+Order of operations: validate (**any error refuses the push; there is no override**) → check that every
+`licence_url` (Project and Layers) answers without an error status (**the one network check; `validate` stays
+offline**) → check the credential can set `public-read` → upload each Layer's files (both files of a vector
+Layer) → upload the Item → write the link in `collection.json` (and `/catalog.json`
 for a new Project) **last**. A partial upload is therefore never visible on the site.
 
 **Re-running** is safe: Layers whose SHA-256 already matches are skipped. **Updating** a recomputed Event is the
@@ -151,7 +186,7 @@ push("publish/project.yaml", "publish/saintes-2026-02.publish.yaml", bucket="...
 
 ## Limits in this version
 
-- Raster Layers only; vector Layers (GeoParquet + PMTiles) are not supported yet.
+- Vector Layers are never converted: produce the GeoParquet and the PMTiles yourself (e.g. with `tippecanoe`).
 - The post-push check of public URLs (200, 206 range, CORS) is not implemented; check by hand with `curl`.
 - No locking: **concurrent pushes to the same bucket are unsupported.**
 - Contract changes are additive only: a newer release reads everything an older one wrote.

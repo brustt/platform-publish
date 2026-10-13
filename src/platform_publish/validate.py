@@ -3,15 +3,18 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .manifest import Manifests, load_yaml, schema_errors
+from .manifest import Manifests, load_yaml, prefill_source_defaults, schema_errors
 from .raster import RasterInfo, inspect
+from .vector import VectorInfo, inspect_vector
 
 
 @dataclass
 class ValidationReport:
     errors: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)  # informational, e.g. prefilled values
     manifests: Manifests | None = None
     rasters: dict[str, RasterInfo] = field(default_factory=dict)  # layer slug -> inferred
+    vectors: dict[str, VectorInfo] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -33,6 +36,7 @@ def validate(project_yaml: str | Path, event_yaml: str | Path) -> ValidationRepo
     if rep.errors:
         return rep  # structure must be right before we look at files
 
+    rep.notes += prefill_source_defaults(event)
     if event["start"] > event["end"]:
         rep.errors.append("event start is after end")
     slugs = [l["slug"] for l in event["layers"]]
@@ -58,6 +62,9 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
         for k in ("licence", "attribution"):
             if not layer.get(k):
                 err(f"auxiliary Layers must carry {k}")
+    if layer["kind"] == "vector":
+        _check_vector(rep, layer, base, err)
+        return
     categorical = "categories" in layer
     values = [c["value"] for c in layer.get("categories", [])]
     if len(set(values)) != len(values):
@@ -107,3 +114,38 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
         err("declared checksum does not match the file")
     if "bbox" in layer and any(abs(a - b) > 1e-4 for a, b in zip(layer["bbox"], info.bbox)):
         err(f"declared bbox {layer['bbox']} but file has {[round(x, 6) for x in info.bbox]}")
+
+
+def _check_vector(rep: ValidationReport, layer: dict, base: Path, err) -> None:
+    """A vector Layer is a GeoParquet (`file`) plus a PMTiles (`tiles`), always both."""
+    s = layer["slug"]
+    paths = {}
+    for key, what in (("file", "GeoParquet"), ("tiles", "PMTiles")):
+        path = (base / layer[key]).resolve()
+        if not path.is_file():
+            err(f"{what} file not found: {layer[key]} (a vector Layer needs both a GeoParquet and a PMTiles file)")
+        paths[key] = path
+    if not all(p.is_file() for p in paths.values()):
+        return
+    try:
+        info = inspect_vector(paths["file"], paths["tiles"])
+    except Exception as e:
+        err(f"cannot read vector files: {e}")
+        return
+    rep.vectors[s] = info
+    for p in info.problems:
+        err(p)
+    declared = layer.get("style", {}).get("layer")
+    if declared is not None:
+        if info.layer_names and declared not in info.layer_names:
+            err(f"declared vector layer name '{declared}' but the PMTiles contain {info.layer_names}")
+    elif len(info.layer_names) > 1:
+        err(f"the PMTiles contain several vector layers {info.layer_names}: name one in style.layer")
+    if "crs" in layer and info.crs and layer["crs"].upper() != info.crs.upper():
+        err(f"declared crs {layer['crs']} but the GeoParquet has {info.crs}")
+    if "media_type" in layer and layer["media_type"] != info.parquet_type:
+        err(f"declared media_type {layer['media_type']} but the GeoParquet is {info.parquet_type}")
+    if "checksum" in layer and layer["checksum"] != info.parquet_sha256:
+        err("declared checksum does not match the GeoParquet file")
+    if "bbox" in layer and any(abs(a - b) > 1e-4 for a, b in zip(layer["bbox"], info.bbox)):
+        err(f"declared bbox {layer['bbox']} but the PMTiles have {[round(x, 6) for x in info.bbox]}")
