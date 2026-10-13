@@ -134,7 +134,8 @@
               },
               "kind": {
                 "enum": [
-                  "raster"
+                  "raster",
+                  "vector"
                 ]
               },
               "title": {
@@ -143,8 +144,14 @@
               "shown": {
                 "type": "boolean"
               },
+              "source": {
+                "enum": [
+                  "copernicus-sentinel"
+                ]
+              },
               "acquired": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
               },
               "categories": {
                 "type": "array",
@@ -241,28 +248,114 @@
                     "maxItems": 3
                   }
                 }
+              },
+              "tiles": {
+                "$ref": "#/$defs/text"
+              },
+              "style": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "layer": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "fill_color": {
+                    "$ref": "#/$defs/color"
+                  },
+                  "line_color": {
+                    "$ref": "#/$defs/color"
+                  },
+                  "opacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
               }
             },
-            "oneOf": [
+            "allOf": [
               {
-                "required": [
-                  "categories"
-                ]
-              },
-              {
-                "required": [
-                  "colormap"
-                ]
-              },
-              {
-                "required": [
-                  "rgb"
-                ]
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "vector"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "tiles"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "categories"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "colormap"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rgb"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "nodata"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "else": {
+                  "oneOf": [
+                    {
+                      "required": [
+                        "categories"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "colormap"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "rgb"
+                      ]
+                    }
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "tiles"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "style"
+                        ]
+                      }
+                    ]
+                  }
+                }
               }
             ]
           }
         }
       }
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
     }
   }
 }

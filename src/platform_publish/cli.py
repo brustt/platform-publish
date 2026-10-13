@@ -34,6 +34,8 @@ def main(argv=None) -> int:
 
     if a.cmd == "validate":
         rep = validate(a.project, a.event)
+        for m in rep.notes:
+            print(f"note: {m}", file=sys.stderr)
         for m in rep.errors:
             print(f"error: {m}", file=sys.stderr)
         print("valid" if rep.ok else f"{len(rep.errors)} error(s)")

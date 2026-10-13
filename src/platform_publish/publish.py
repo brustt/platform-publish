@@ -88,6 +88,33 @@ def check_public_urls(urls, ranged, get=None, origin=ORIGIN):
         elif r.headers.get("Access-Control-Allow-Origin") not in ("*", origin):
             problems.append(f"{u}: no CORS header for {origin}")
     return problems
+def _layer_files(rep, layer, p, e, base):
+    """(key, local path, sha256, content type) for each file of a Layer: one for a raster, two for a vector."""
+    s = layer["slug"]
+    if layer["kind"] == "vector":
+        info = rep.vectors[s]
+        return [
+            (stac.layer_key(p, e, s, "parquet"), (base / layer["file"]).resolve(), info.parquet_sha256, info.parquet_type),
+            (stac.layer_key(p, e, s, "pmtiles"), (base / layer["tiles"]).resolve(), info.pmtiles_sha256, info.pmtiles_type),
+        ]
+    return [(stac.layer_key(p, e, s), (base / layer["file"]).resolve(), rep.rasters[s].sha256, "image/tiff")]
+
+
+def _licence_urls(project, event) -> list[str]:
+    urls = [project.get("licence_url")] + [l.get("licence_url") for l in event["layers"]]
+    return list(dict.fromkeys(u for u in urls if u))
+
+
+def url_reachable(url: str, timeout: float = 10.0) -> str | None:
+    """None when the URL answers with a non-error status, else a short reason."""
+    try:
+        r = requests.head(url, allow_redirects=True, timeout=timeout)
+        if r.status_code in (403, 405, 501):  # some servers refuse HEAD
+            r = requests.get(url, stream=True, timeout=timeout)
+            r.close()
+        return None if r.status_code < 400 else f"HTTP {r.status_code}"
+    except requests.RequestException as e:
+        return type(e).__name__
 
 
 def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_url=None,
@@ -100,12 +127,18 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
     p, e = project["slug"], event["event"]
     k = stac.keys(p, e)
     updated = now or stac.now()
-    item = stac.build_item(project, event, rep.rasters, root_url, updated)
+    item = stac.build_item(project, event, rep.rasters, root_url, updated, rep.vectors)
     res = PushResult(dry_run=dry_run)
 
+    # online checks belong to push: offline `validate` never touches the network
+    unreachable = [f"licence URL not reachable: {u} ({why})" for u in _licence_urls(project, event)
+                   if (why := url_reachable(u))]
+    if unreachable:
+        raise PushRefused(unreachable)
+
+    files = [f for layer in event["layers"] for f in _layer_files(rep, layer, p, e, base)]
     if dry_run:
-        for layer in event["layers"]:
-            res.uploaded.append(stac.layer_key(p, e, layer["slug"]))
+        res.uploaded += [key for key, *_ in files]
         res.uploaded.append(k["item"])
         res.registered += [k["collection"], k["catalog"]]
         return res
@@ -113,15 +146,13 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
     s3 = s3 or make_client(profile, endpoint_url)
     check_can_set_public_read(s3, bucket)
 
-    for layer in event["layers"]:
-        key = stac.layer_key(p, e, layer["slug"])
-        info = rep.rasters[layer["slug"]]
-        if _remote_checksum(s3, bucket, key) == info.sha256:
+    for key, path, sha, content_type in files:
+        if _remote_checksum(s3, bucket, key) == sha:
             res.skipped.append(key)
             continue
-        with open((base / layer["file"]).resolve(), "rb") as f:
+        with open(path, "rb") as f:
             s3.put_object(Bucket=bucket, Key=key, Body=f, ACL="public-read",
-                          ContentType="image/tiff", Metadata={"sha256": info.sha256},
+                          ContentType=content_type, Metadata={"sha256": sha},
                           CacheControl="public, max-age=3600")
         res.uploaded.append(key)
 

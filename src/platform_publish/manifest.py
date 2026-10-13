@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from importlib import resources
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -48,3 +49,32 @@ def _stringify_dates(x):
     if isinstance(x, date):
         return x.isoformat()
     return x
+
+
+OSM_DEFAULTS = {
+    "attribution": "© OpenStreetMap contributors",
+    "licence": "ODbL-1.0",
+    "licence_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+}
+_OSM_HOSTS = ("openstreetmap.org", "geofabrik.de")
+
+
+def is_osm_source(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in _OSM_HOSTS)
+
+
+def prefill_source_defaults(event: dict) -> list[str]:
+    """Suggest attribution and licence for OpenStreetMap-sourced Layers (by `source_url`).
+
+    Only fills what the owner left out, so every suggested value stays editable. Returns notes."""
+    notes = []
+    for layer in event["layers"]:
+        if not is_osm_source(layer.get("source_url", "")):
+            continue
+        filled = [k for k, v in OSM_DEFAULTS.items() if not layer.get(k)]
+        for k in filled:
+            layer[k] = OSM_DEFAULTS[k]
+        if filled:
+            notes.append(f"layer '{layer['slug']}': OpenStreetMap source, prefilled {', '.join(filled)} (edit to override)")
+    return notes
