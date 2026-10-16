@@ -22,6 +22,7 @@ class PushResult:
     uploaded: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
     registered: list[str] = field(default_factory=list)  # catalog files written
+    delete_failures: list[str] = field(default_factory=list)  # withdraw: keys the bucket refused to delete
     dry_run: bool = False
     url_problems: list[str] = field(default_factory=list)  # failed public-URL checks; nothing is rolled back
 
@@ -60,9 +61,13 @@ def check_can_set_public_read(s3, bucket):
     key = ".platform-publish-probe"
     try:
         s3.put_object(Bucket=bucket, Key=key, Body=b"", ACL="public-read")
-        s3.delete_object(Bucket=bucket, Key=key)
     except ClientError as e:
         raise PushRefused([f"credential cannot write public-read objects: {e}"]) from e
+    try:
+        s3.delete_object(Bucket=bucket, Key=key)
+    except ClientError as e:
+        raise PushRefused([f"credential cannot delete objects: {e}; the public probe '{key}' "
+                           "was left in the bucket, delete it by hand"]) from e
 
 
 ORIGIN = "https://brustt.xyz"
@@ -148,6 +153,7 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
 
     for key, path, sha, content_type in files:
         if _remote_checksum(s3, bucket, key) == sha:
+            s3.put_object_acl(Bucket=bucket, Key=key, ACL="public-read")  # may predate this tool
             res.skipped.append(key)
             continue
         with open(path, "rb") as f:
@@ -190,8 +196,8 @@ def withdraw(project_slug, event_slug, *, bucket, s3=None, profile=None, endpoin
     col = _get_json(s3, bucket, k["collection"])
     if col is None:
         raise PushRefused([f"no such Project '{project_slug}' in the bucket"])
-    item_suffix = "/" + k["item"]
-    links = [l for l in col["links"] if not (l["rel"] == "item" and l["href"].endswith(item_suffix))]
+    item_hrefs = stac.item_hrefs(col, project_slug, k["item"])
+    links = [l for l in col["links"] if not (l["rel"] == "item" and l["href"] in item_hrefs)]
     listed = [o["Key"] for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
               for o in page.get("Contents", [])]
     res = PushResult(dry_run=dry_run)
@@ -211,6 +217,9 @@ def withdraw(project_slug, event_slug, *, bucket, s3=None, profile=None, endpoin
         _put_json(s3, bucket, k["collection"], col)  # link first, so nothing half-deleted is visible
         res.registered.append(k["collection"])
     for i in range(0, len(listed), 1000):
-        s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": x} for x in listed[i:i + 1000]]})
-    res.uploaded = listed  # reused field: keys deleted
+        out = s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": x} for x in listed[i:i + 1000]]})
+        res.delete_failures += [f"{d['Key']}: {d.get('Code', 'error')} {d.get('Message', '')}".strip()
+                                for d in out.get("Errors", [])]
+    failed = {f.split(": ", 1)[0] for f in res.delete_failures}
+    res.uploaded = [x for x in listed if x not in failed]  # reused field: keys deleted
     return res

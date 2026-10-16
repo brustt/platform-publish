@@ -23,6 +23,10 @@ class ValidationReport:
         return not self.errors
 
 
+def _same_nodata(a, b) -> bool:
+    return a == b or (isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b))
+
+
 def validate(project_yaml: str | Path, event_yaml: str | Path) -> ValidationReport:
     rep = ValidationReport()
     event_yaml = Path(event_yaml)
@@ -118,7 +122,7 @@ def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
             if r[0] >= r[1]:
                 err(f"{key} range {r} must have min < max")
     # a declared value that disagrees with the file is an error
-    if "nodata" in layer and info.nodata is not None and layer["nodata"] != info.nodata:
+    if "nodata" in layer and info.nodata is not None and not _same_nodata(layer["nodata"], info.nodata):
         err(f"declared nodata {layer['nodata']} but file has {info.nodata}")
     if "crs" in layer and layer["crs"].upper() != (info.crs or "").upper():
         err(f"declared crs {layer['crs']} but file has {info.crs}")

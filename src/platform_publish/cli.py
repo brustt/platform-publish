@@ -54,7 +54,9 @@ def main(argv=None) -> int:
             print(f"{'would unlink' if res.dry_run else 'unlinked'} {k}")
         for k in res.uploaded:
             print(f"{'would delete' if res.dry_run else 'deleted'} {k}")
-        return 0
+        for m in res.delete_failures:
+            print(f"error: not deleted: {m}", file=sys.stderr)
+        return 1 if res.delete_failures else 0
 
     if not a.bucket and not a.dry_run:
         ap.error("--bucket (or PLATFORM_PUBLISH_BUCKET) is required")

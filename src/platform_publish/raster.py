@@ -69,10 +69,9 @@ def inspect(path: Path, categorical: bool = True) -> RasterInfo:
         ov_values: set = set()
         if categorical and src.count >= 1:
             base_values = set(np.unique(src.read(1)).tolist())
-            for f in ovr:
-                a = src.read(1, out_shape=(max(1, src.height // f), max(1, src.width // f)),
-                             resampling=rasterio.enums.Resampling.nearest)
-                ov_values |= set(np.unique(a).tolist())
+            for level in range(len(ovr)):  # open each overview itself: a resampled read may fall back to the base
+                with rasterio.open(path, overview_level=level) as ov:
+                    ov_values |= set(np.unique(ov.read(1)).tolist())
         tag = src.tags(ns="rio_overview").get("resampling")
         return RasterInfo(
             crs=crs, nodata=src.nodata, count=src.count, overview_resampling=tag.lower() if tag else None, bbox=bbox, footprint=footprint,

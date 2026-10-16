@@ -24,6 +24,36 @@ def url(root: str, key: str) -> str:
     return f"{root.rstrip('/')}/{key}"
 
 
+def collection_root(col: dict, project_slug: str) -> str | None:
+    """The root URL a Collection was written with, read back from its own self link."""
+    tail = f"/{project_slug}/collection.json"
+    for l in col.get("links", []):
+        if l["rel"] == "self" and l["href"].endswith(tail):
+            return l["href"][:-len(tail)]
+    return None
+
+
+def item_hrefs(col: dict, project_slug: str, item_key: str) -> set[str]:
+    """The exact href an Event's item link has in this Collection, whatever root URL it was pushed with."""
+    root = collection_root(col, project_slug)
+    return {url(root, item_key)} if root is not None else set()
+
+
+def union_bbox(bboxes: list[list[float]]) -> list[float]:
+    """Union of WGS84 boxes; a box with west > east crosses the antimeridian (STAC convention)."""
+    south, north = min(b[1] for b in bboxes), max(b[3] for b in bboxes)
+    if all(b[0] <= b[2] for b in bboxes):
+        return [min(b[0] for b in bboxes), south, max(b[2] for b in bboxes), north]
+    if any(b[2] - b[0] >= 360 for b in bboxes):
+        return [-180, south, 180, north]
+    spans = [(w := b[0] % 360, e if (e := b[2] % 360) >= w else e + 360) for b in bboxes]  # unwrap onto [0, 720)
+    west, east = min(w for w, _ in spans), max(e for _, e in spans)
+    if east - west >= 360:
+        return [-180, south, 180, north]
+    wrap = lambda x: (x + 180) % 360 - 180  # noqa: E731
+    return [wrap(west), south, wrap(east), north]
+
+
 def _vector_assets(root, p, e, layer, info) -> dict:
     """A vector Layer is one asset: PMTiles to display, with the GeoParquet as its download."""
     s = layer["slug"]
@@ -55,9 +85,14 @@ def build_item(project: dict, event: dict, rasters: dict, root: str, updated: st
     vectors = vectors or {}
     # the Event's footprint is the union extent of its Layers; with one Layer it is that footprint
     infos = [rasters.get(l["slug"]) or vectors[l["slug"]] for l in event["layers"]]
-    bbox = [min(i.bbox[0] for i in infos), min(i.bbox[1] for i in infos),
-            max(i.bbox[2] for i in infos), max(i.bbox[3] for i in infos)]
-    geometry = infos[0].footprint if len(infos) == 1 else _bbox_polygon(bbox)
+    bbox = union_bbox([i.bbox for i in infos])
+    footprints = [i.footprint for i in infos]
+    if len(infos) == 1:
+        geometry = footprints[0]
+    elif all(f["type"] == "Polygon" for f in footprints):
+        geometry = {"type": "MultiPolygon", "coordinates": [f["coordinates"] for f in footprints]}
+    else:
+        geometry = _bbox_polygon(bbox)
     assets = {}
     for order, layer in enumerate(event["layers"]):
         if layer["kind"] == "vector":
@@ -143,8 +178,7 @@ def link_extent(links: list[dict]) -> dict:
     if not items:
         return {"spatial": {"bbox": [[-180, -90, 180, 90]]}, "temporal": {"interval": [[None, None]]}}
     return {
-        "spatial": {"bbox": [[min(l["bbox"][0] for l in items), min(l["bbox"][1] for l in items),
-                              max(l["bbox"][2] for l in items), max(l["bbox"][3] for l in items)]]},
+        "spatial": {"bbox": [union_bbox([l["bbox"] for l in items])]},
         "temporal": {"interval": [[min(l["start_datetime"] for l in items),
                                    max(l["end_datetime"] for l in items)]]},
     }
@@ -157,7 +191,15 @@ def update_collection(col: dict, project: dict, item: dict, root: str) -> dict:
     if project.get("licence_url"):
         col["brustt:licence_url"] = project["licence_url"]
     href = item["links"][0]["href"]
-    links = [l for l in col["links"] if not (l["rel"] == "item" and l["href"] == href)]
+    p = project["slug"]
+    # the same Event pushed under another root URL is replaced, not duplicated
+    same = item_hrefs(col, p, keys(p, item["id"])["item"]) | {href}
+    links = [l for l in col["links"] if not (l["rel"] == "item" and l["href"] in same)]
+    for l in links:  # keep the Collection on the same root as its Items
+        if l["rel"] == "self":
+            l["href"] = url(root, keys(p, "")["collection"])
+        elif l["rel"] in ("root", "parent"):
+            l["href"] = url(root, "catalog.json")
     links.append({"rel": "item", "href": href, "type": "application/geo+json",
                   "title": item["properties"]["title"],
                   "bbox": item["bbox"],
