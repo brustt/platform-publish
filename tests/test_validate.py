@@ -10,9 +10,11 @@ def errs(rep):
 def test_valid_project_passes(make_project):
     rep = validate(*make_project())
     assert rep.ok, rep.errors
-    info = rep.rasters["flood-extent"]
-    assert info.crs == "EPSG:32630" and info.nodata == 255
-    assert len(info.sha256) == 64 and info.bbox[0] < info.bbox[2]
+    layer = rep.layers[0]
+    asset = layer.asset({"slug": "flood-detection", "attribution": "a", "licence": "CC-BY-4.0"}, "saintes-2026-02",
+                        "https://x.test", 0)
+    assert asset["proj:code"] == "EPSG:32630" and asset["file:nodata"] == 255
+    assert len(asset["file:checksum"]) == 68 and layer.bbox[0] < layer.bbox[2]
 
 
 def test_validate_is_offline(make_project, monkeypatch):
@@ -121,7 +123,7 @@ def test_continuous_still_needs_nodata(make_project):
 
 def test_resampling_tag_checked_when_present(make_project, monkeypatch):
     import importlib
-    v = importlib.import_module("platform_publish.validate")
+    v = importlib.import_module("platform_publish.layer")
     real = v.inspect
 
     def tagged(tag):
@@ -139,7 +141,7 @@ def test_resampling_tag_checked_when_present(make_project, monkeypatch):
 
 def test_resampling_tag_checked_without_nodata(make_project, monkeypatch):
     import importlib
-    v = importlib.import_module("platform_publish.validate")
+    v = importlib.import_module("platform_publish.layer")
     real = v.inspect
 
     def tagged(path, categorical=True):

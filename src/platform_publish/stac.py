@@ -54,79 +54,20 @@ def union_bbox(bboxes: list[list[float]]) -> list[float]:
     return [wrap(west), south, wrap(east), north]
 
 
-def _vector_assets(root, p, e, layer, info) -> dict:
-    """A vector Layer is one asset: PMTiles to display, with the GeoParquet as its download."""
-    s = layer["slug"]
-    style = dict(layer.get("style", {}))
-    if "layer" not in style and info.layer_names:
-        style["layer"] = info.layer_names[0]  # validated: exactly one when not declared
-    a = {
-        "href": url(root, layer_key(p, e, s, "pmtiles")),
-        "type": info.pmtiles_type,
-        "file:checksum": "1220" + info.pmtiles_sha256,
-        "file:size": info.pmtiles_size,
-        "brustt:download": {
-            "href": url(root, layer_key(p, e, s, "parquet")),
-            "type": info.parquet_type,
-            "file:checksum": "1220" + info.parquet_sha256,
-            "file:size": info.parquet_size,
-            "proj:code": info.crs,
-        },
-        "brustt:vector_layers": info.layer_names,
-    }
-    if style:
-        a["brustt:style"] = style
-    return a
-
-
-def build_item(project: dict, event: dict, rasters: dict, root: str, updated: str, vectors: dict | None = None) -> dict:
+def build_item(project: dict, event: dict, layers: list, root: str, updated: str) -> dict:
+    """The Event's Item. `layers` are the loaded Layers of the Event, in manifest order."""
     p, e = project["slug"], event["event"]
     k = keys(p, e)
-    vectors = vectors or {}
     # the Event's footprint is the union extent of its Layers; with one Layer it is that footprint
-    infos = [rasters.get(l["slug"]) or vectors[l["slug"]] for l in event["layers"]]
-    bbox = union_bbox([i.bbox for i in infos])
-    footprints = [i.footprint for i in infos]
-    if len(infos) == 1:
+    bbox = union_bbox([l.bbox for l in layers])
+    footprints = [l.footprint for l in layers]
+    if len(layers) == 1:
         geometry = footprints[0]
     elif all(f["type"] == "Polygon" for f in footprints):
         geometry = {"type": "MultiPolygon", "coordinates": [f["coordinates"] for f in footprints]}
     else:
         geometry = _bbox_polygon(bbox)
-    assets = {}
-    for order, layer in enumerate(event["layers"]):
-        if layer["kind"] == "vector":
-            a = _vector_assets(root, p, e, layer, vectors[layer["slug"]])
-        else:
-            info = rasters[layer["slug"]]
-            a = {
-                "href": url(root, layer_key(p, e, layer["slug"])),
-                "type": info.media_type,
-                "file:checksum": "1220" + info.sha256,
-                "file:size": info.size,
-                "proj:code": info.crs,
-                "file:nodata": info.nodata,
-            }
-        a |= {
-            "title": layer["title"],
-            "roles": ["data", layer["role"]],
-            "brustt:role": layer["role"],
-            "brustt:kind": layer["kind"],
-            "brustt:order": order,
-            "brustt:shown": layer.get("shown", True),
-            "brustt:attribution": layer.get("attribution", project["attribution"]),
-            "brustt:licence": layer.get("licence", project["licence"]),
-        }
-        for hint in ("categories", "colormap", "rgb"):
-            if hint in layer:
-                a[f"brustt:{hint}"] = layer[hint]
-        for src, dst in (("licence_url", "brustt:licence_url"), ("source_url", "brustt:source_url"),
-                         ("acquired", "brustt:acquired")):
-            if layer.get(src):
-                a[dst] = layer[src]
-        if "licence_url" not in layer and "licence" not in layer and project.get("licence_url"):
-            a["brustt:licence_url"] = project["licence_url"]
-        assets[layer["slug"]] = a
+    assets = {l.slug: l.asset(project, e, root, order) for order, l in enumerate(layers)}
     props = {
         "title": event["title"],
         "datetime": None,

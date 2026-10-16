@@ -3,6 +3,12 @@
 Contract changes are additive only. Update `docs/publish.md` in the same change as any behaviour change,
 and bump its "Applies to" line at release.
 
+## Unreleased
+- Internal: a Layer module (`platform_publish.layer`) owns inspection, checks, upload files and the STAC asset of
+  a Layer, for raster and vector alike. `ValidationReport.rasters` and `.vectors` are replaced by `.layers`.
+- Vector Layers now also have their `licence` checked (as raster Layers already were), and declared-vs-file
+  mismatch messages share one wording ("declared crs X but file has Y").
+
 ## v0.2.0 (2026-10-13)
 - Fix: `validate` (and so `push`) crashed with a `NameError` because `licence` and `sources` were not imported.
 - Fix: the post-push URL check requested `<layer>.tif` for a vector Layer (404, exit 2); it now checks the

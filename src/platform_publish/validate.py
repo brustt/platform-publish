@@ -1,13 +1,10 @@
 """Offline validation of a Project and one Event manifest."""
-import math
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 
 from . import licence, sources
+from .layer import Layer, load_layer
 from .manifest import Manifests, load_yaml, prefill_source_defaults, schema_errors
-from .raster import RasterInfo, inspect
-from .vector import VectorInfo, inspect_vector
 
 
 @dataclass
@@ -15,16 +12,11 @@ class ValidationReport:
     errors: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # informational, e.g. prefilled values
     manifests: Manifests | None = None
-    rasters: dict[str, RasterInfo] = field(default_factory=dict)  # layer slug -> inferred
-    vectors: dict[str, VectorInfo] = field(default_factory=dict)
+    layers: list[Layer] = field(default_factory=list)  # in manifest order; usable only when `ok`
 
     @property
     def ok(self) -> bool:
         return not self.errors
-
-
-def _same_nodata(a, b) -> bool:
-    return a == b or (isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b))
 
 
 def validate(project_yaml: str | Path, event_yaml: str | Path) -> ValidationReport:
@@ -59,111 +51,9 @@ def validate(project_yaml: str | Path, event_yaml: str | Path) -> ValidationRepo
 
     base = event_yaml.parent
     rep.manifests = Manifests(project, event, base)
-    for layer in event["layers"]:
-        _check_layer(rep, layer, base)
+    for manifest_layer in event["layers"]:
+        layer = load_layer(manifest_layer, base)
+        rep.layers.append(layer)
+        rep.errors += layer.errors
     return rep
 
-
-def _check_layer(rep: ValidationReport, layer: dict, base: Path) -> None:
-    s = layer["slug"]
-    err = lambda m: rep.errors.append(f"layer '{s}': {m}")  # noqa: E731
-    if layer["role"] == "auxiliary":
-        for k in ("licence", "attribution"):
-            if not layer.get(k):
-                err(f"auxiliary Layers must carry {k}")
-    if layer["kind"] == "vector":
-        _check_vector(rep, layer, base, err)
-        return
-    if "licence" in layer and not licence.is_valid(layer["licence"]):
-        err(licence.problem(layer["licence"]))
-    categorical = "categories" in layer
-    values = [c["value"] for c in layer.get("categories", [])]
-    if len(set(values)) != len(values):
-        err("duplicate values in categories")
-
-    path = (base / layer["file"]).resolve()
-    if not path.is_file():
-        err(f"file not found: {layer['file']}")
-        return
-    try:
-        info = inspect(path, categorical)
-    except Exception as e:
-        err(f"cannot read raster: {e}")
-        return
-    rep.rasters[s] = info
-    for p in info.problems:
-        err(p)
-    if info.nodata is None or (isinstance(info.nodata, float) and math.isnan(info.nodata)):
-        err("no-data value is not declared in the file")
-    if categorical:
-        if info.overview_resampling and info.overview_resampling not in ("nearest", "mode"):
-            err(f"overviews were built with '{info.overview_resampling}' resampling: "
-                "use nearest or mode on a categorical raster")
-        known = set(values) | ({info.nodata} if info.nodata is not None else set())
-        stray = info.overview_values - known
-        if stray:
-            err(f"overviews contain values {sorted(stray)} that are not categories: "
-                "use nearest or mode resampling")
-    if "colormap" in layer and layer["colormap"].get("band", 1) > info.count:
-        err(f"colormap band {layer['colormap']['band']} but the file has {info.count} band(s)")
-    if "acquired" in layer:
-        try:
-            date.fromisoformat(layer["acquired"])
-        except ValueError:
-            err(f"acquired '{layer['acquired']}' is not a real date (use YYYY-MM-DD)")
-    if "rgb" in layer:
-        if len(set(layer["rgb"]["bands"])) != 3:
-            err(f"rgb bands {layer['rgb']['bands']} must be three different bands")
-        if max(layer["rgb"]["bands"]) > info.count:
-            err(f"rgb bands {layer['rgb']['bands']} but the file has {info.count} band(s)")
-    for key in ("colormap", "rgb"):
-        for r in ([layer[key]["range"]] if key == "colormap" and key in layer else
-                  layer.get(key, {}).get("ranges", [])):
-            if r[0] >= r[1]:
-                err(f"{key} range {r} must have min < max")
-    # a declared value that disagrees with the file is an error
-    if "nodata" in layer and info.nodata is not None and not _same_nodata(layer["nodata"], info.nodata):
-        err(f"declared nodata {layer['nodata']} but file has {info.nodata}")
-    if "crs" in layer and layer["crs"].upper() != (info.crs or "").upper():
-        err(f"declared crs {layer['crs']} but file has {info.crs}")
-    if "media_type" in layer and layer["media_type"] != info.media_type:
-        err(f"declared media_type {layer['media_type']} but file is {info.media_type}")
-    if "checksum" in layer and layer["checksum"] != info.sha256:
-        err("declared checksum does not match the file")
-    if "bbox" in layer and any(abs(a - b) > 1e-4 for a, b in zip(layer["bbox"], info.bbox)):
-        err(f"declared bbox {layer['bbox']} but file has {[round(x, 6) for x in info.bbox]}")
-
-
-def _check_vector(rep: ValidationReport, layer: dict, base: Path, err) -> None:
-    """A vector Layer is a GeoParquet (`file`) plus a PMTiles (`tiles`), always both."""
-    s = layer["slug"]
-    paths = {}
-    for key, what in (("file", "GeoParquet"), ("tiles", "PMTiles")):
-        path = (base / layer[key]).resolve()
-        if not path.is_file():
-            err(f"{what} file not found: {layer[key]} (a vector Layer needs both a GeoParquet and a PMTiles file)")
-        paths[key] = path
-    if not all(p.is_file() for p in paths.values()):
-        return
-    try:
-        info = inspect_vector(paths["file"], paths["tiles"])
-    except Exception as e:
-        err(f"cannot read vector files: {e}")
-        return
-    rep.vectors[s] = info
-    for p in info.problems:
-        err(p)
-    declared = layer.get("style", {}).get("layer")
-    if declared is not None:
-        if info.layer_names and declared not in info.layer_names:
-            err(f"declared vector layer name '{declared}' but the PMTiles contain {info.layer_names}")
-    elif len(info.layer_names) > 1:
-        err(f"the PMTiles contain several vector layers {info.layer_names}: name one in style.layer")
-    if "crs" in layer and info.crs and layer["crs"].upper() != info.crs.upper():
-        err(f"declared crs {layer['crs']} but the GeoParquet has {info.crs}")
-    if "media_type" in layer and layer["media_type"] != info.parquet_type:
-        err(f"declared media_type {layer['media_type']} but the GeoParquet is {info.parquet_type}")
-    if "checksum" in layer and layer["checksum"] != info.parquet_sha256:
-        err("declared checksum does not match the GeoParquet file")
-    if "bbox" in layer and any(abs(a - b) > 1e-4 for a, b in zip(layer["bbox"], info.bbox)):
-        err(f"declared bbox {layer['bbox']} but the PMTiles have {[round(x, 6) for x in info.bbox]}")

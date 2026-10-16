@@ -8,7 +8,7 @@ from conftest import BUCKET, ROOT
 from platform_publish import push, withdraw
 from platform_publish.publish import PushRefused, check_can_set_public_read
 from platform_publish.stac import union_bbox
-from platform_publish.validate import _same_nodata
+from platform_publish.layer import _same_nodata
 
 EVENT_KEY = "flood-detection/saintes-2026-02/flood-extent.tif"
 COLLECTION = "flood-detection/collection.json"

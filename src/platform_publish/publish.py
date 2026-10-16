@@ -93,16 +93,6 @@ def check_public_urls(urls, ranged, get=None, origin=ORIGIN):
         elif r.headers.get("Access-Control-Allow-Origin") not in ("*", origin):
             problems.append(f"{u}: no CORS header for {origin}")
     return problems
-def _layer_files(rep, layer, p, e, base):
-    """(key, local path, sha256, content type) for each file of a Layer: one for a raster, two for a vector."""
-    s = layer["slug"]
-    if layer["kind"] == "vector":
-        info = rep.vectors[s]
-        return [
-            (stac.layer_key(p, e, s, "parquet"), (base / layer["file"]).resolve(), info.parquet_sha256, info.parquet_type),
-            (stac.layer_key(p, e, s, "pmtiles"), (base / layer["tiles"]).resolve(), info.pmtiles_sha256, info.pmtiles_type),
-        ]
-    return [(stac.layer_key(p, e, s), (base / layer["file"]).resolve(), rep.rasters[s].sha256, "image/tiff")]
 
 
 def _licence_urls(project, event) -> list[str]:
@@ -128,11 +118,11 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
     if not rep.ok:
         raise PushRefused(rep.errors)  # no override
 
-    project, event, base = rep.manifests.project, rep.manifests.event, rep.manifests.base_dir
+    project, event = rep.manifests.project, rep.manifests.event
     p, e = project["slug"], event["event"]
     k = stac.keys(p, e)
     updated = now or stac.now()
-    item = stac.build_item(project, event, rep.rasters, root_url, updated, rep.vectors)
+    item = stac.build_item(project, event, rep.layers, root_url, updated)
     res = PushResult(dry_run=dry_run)
 
     # online checks belong to push: offline `validate` never touches the network
@@ -141,7 +131,7 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
     if unreachable:
         raise PushRefused(unreachable)
 
-    files = [f for layer in event["layers"] for f in _layer_files(rep, layer, p, e, base)]
+    files = [f for layer in rep.layers for f in layer.files(p, e)]
     if dry_run:
         res.uploaded += [key for key, *_ in files]
         res.uploaded.append(k["item"])
@@ -179,9 +169,7 @@ def push(project_yaml, event_yaml, *, bucket, s3=None, profile=None, endpoint_ur
         res.registered.append(k["catalog"])
 
     if verify:  # after registration: report only, nothing is rolled back
-        exts = {"raster": ["tif"], "vector": ["pmtiles", "parquet"]}  # a vector Layer is two files
-        layer_urls = [stac.url(root_url, stac.layer_key(p, e, l["slug"], ext))
-                      for l in event["layers"] for ext in exts[l["kind"]]]
+        layer_urls = [stac.url(root_url, f.key) for f in files]
         res.url_problems = check_public_urls(layer_urls + [stac.url(root_url, k["item"])],
                                              set(layer_urls), http_get)
     return res

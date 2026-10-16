@@ -31,8 +31,10 @@ def public(s3, key):
 def test_result_raster_plus_auxiliary_vector_validates(make_vector_project):
     rep = validate(*make_vector_project())
     assert rep.ok, rep.errors
-    v = rep.vectors["buildings"]
-    assert v.layer_names == ["buildings"] and v.crs == "EPSG:4326"
+    v = next(l for l in rep.layers if l.slug == "buildings")
+    asset = v.asset({"slug": "flood-detection", "attribution": "a", "licence": "CC-BY-4.0"}, "saintes-2026-02",
+                    "https://x.test", 1)
+    assert asset["brustt:vector_layers"] == ["buildings"] and asset["brustt:download"]["proj:code"] == "EPSG:4326"
     assert v.bbox == pytest.approx([-0.6, 45.7, -0.5, 45.8])
 
 
