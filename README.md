@@ -18,7 +18,8 @@ Concurrent pushes are unsupported.
 Version 0.2 covers raster Layers (categorical, or continuous with a colour map or an RGB band mapping), plus vector Layers (a GeoParquet and PMTiles pair) and Auxiliary Layers.
 
 `platform-publish withdraw <project> <event> --bucket ...` unlinks an Event from `collection.json`, then deletes its prefix.
-Full guide: [docs/publish.md](docs/publish.md). Examples in `examples/`; schema in `src/platform_publish/schema.json`.
+`platform-publish scaffold publish/` writes or updates both manifests by asking only what the files cannot tell it, then validates.
+Full guide: [docs/publish.md](docs/publish.md); what each manifest must contain: [docs/manifests.md](docs/manifests.md). Examples in `examples/`; schema in `src/platform_publish/schema.json`.
 
 ## Tests
 `pip install -e '.[test]' && pytest` (moto, no network). If GDAL/PROJ env vars from another install

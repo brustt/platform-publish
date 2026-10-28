@@ -1,10 +1,12 @@
-"""Thin CLI over the library: validate, push."""
+"""Thin CLI over the library: validate, push, withdraw, scaffold."""
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from .manifest import DEFAULT_ROOT_URL
 from .publish import PushRefused, push, withdraw
+from .scaffold import ScaffoldError, scaffold
 from .validate import validate
 
 
@@ -18,6 +20,11 @@ def main(argv=None) -> int:
     wp = sub.add_parser("withdraw", help="unpublish an Event: unlink it, then delete its prefix")
     wp.add_argument("project_slug")
     wp.add_argument("event_slug")
+    sc = sub.add_parser("scaffold", help="write or update project.yaml and <event>.publish.yaml by answering questions")
+    sc.add_argument("publish_dir", nargs="?", default="publish", help="folder of the manifests (default: publish)")
+    sc.add_argument("--outputs", help="folder holding <event>/ with the final files (default: <publish_dir>/../outputs)")
+    sc.add_argument("--event", help="Event slug (default: asked)")
+    sc.add_argument("--yes", action="store_true", help="take every default, ask nothing")
     pp = sub.choices["push"]
     pp.add_argument("--bucket", default=os.environ.get("PLATFORM_PUBLISH_BUCKET"))
     pp.add_argument("--profile", default=os.environ.get("AWS_PROFILE"))
@@ -40,6 +47,18 @@ def main(argv=None) -> int:
             print(f"error: {m}", file=sys.stderr)
         print("valid" if rep.ok else f"{len(rep.errors)} error(s)")
         return 0 if rep.ok else 1
+
+    if a.cmd == "scaffold":
+        publish_dir = Path(a.publish_dir)
+        try:
+            return scaffold(publish_dir, Path(a.outputs) if a.outputs else publish_dir.resolve().parent / "outputs",
+                            event=a.event, yes=a.yes)
+        except ScaffoldError as e:
+            print(e, file=sys.stderr)
+            return 1
+        except (EOFError, KeyboardInterrupt):
+            print("\nnothing written", file=sys.stderr)
+            return 1
 
     if a.cmd == "withdraw":
         if not a.bucket:

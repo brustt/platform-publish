@@ -34,6 +34,9 @@ Bucket creation and the credential itself: see the object-storage tutorial in th
 `file:` paths in an Event manifest are relative to the manifest. Folder name = Event slug, file name = Layer slug,
 so local paths map to bucket paths: `<project>/<event>/<layer>.tif`.
 
+Every field, what is required and what the files must be: [manifests.md](manifests.md). To write or update both
+files by answering questions: `platform-publish scaffold publish/`.
+
 ## 4. `project.yaml` (once per Project)
 
 ```yaml
