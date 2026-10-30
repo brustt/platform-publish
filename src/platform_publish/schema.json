@@ -81,7 +81,7 @@
       "additionalProperties": false,
       "properties": {
         "event": {
-          "$ref": "#/$defs/eventSlug"
+          "type": "string"
         },
         "title": {
           "$ref": "#/$defs/text"
@@ -349,6 +349,36 @@
                 }
               }
             ]
+          }
+        },
+        "data_shape": {
+          "enum": [
+            "event",
+            "single-map"
+          ]
+        }
+      },
+      "if": {
+        "required": [
+          "data_shape"
+        ],
+        "properties": {
+          "data_shape": {
+            "const": "single-map"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "$ref": "#/$defs/slug"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "event": {
+            "$ref": "#/$defs/eventSlug"
           }
         }
       }

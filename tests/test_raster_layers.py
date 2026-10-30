@@ -179,3 +179,14 @@ def test_unknown_source_is_refused(make_event):
 def test_compare_must_name_two_layers_of_the_event(make_event):
     rep = validate(*make_event(PAIR, event_over={"compare": ["s1-before", "s1-later"]}))
     assert "compare" in errs(rep) and "s1-later" in errs(rep)
+
+
+def test_item_carries_data_shape_when_set(s3, make_event):
+    ev = {"event": "indre-et-loire-2025", "data_shape": "single-map"}
+    push(*make_event(event_over=ev), bucket=BUCKET, s3=s3, root_url=ROOT)
+    assert get(s3, "flood-detection/indre-et-loire-2025/indre-et-loire-2025.json")["properties"]["brustt:data_shape"] == "single-map"
+
+
+def test_item_from_an_existing_manifest_has_no_data_shape(s3, make_event):
+    push(*make_event(), bucket=BUCKET, s3=s3, root_url=ROOT)
+    assert "brustt:data_shape" not in get(s3, ITEM)["properties"]
