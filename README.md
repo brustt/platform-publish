@@ -4,7 +4,7 @@ Validate and Publish Earth-observation results to the brustt Platform bucket as 
 It validates and uploads; it never converts (COGs are made by your own pipeline).
 
 ```
-pip install git+https://github.com/brustt/platform-publish@v0.2.0
+pip install git+https://github.com/brustt/platform-publish@v0.2.2
 platform-publish validate publish/project.yaml publish/saintes-2026-02.publish.yaml
 platform-publish push publish/project.yaml publish/saintes-2026-02.publish.yaml \
     --bucket <bucket> --endpoint-url <s3 endpoint> [--profile brustt] [--root-url https://data.brustt.xyz] [--dry-run]

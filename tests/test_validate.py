@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from platform_publish import validate
 
@@ -149,3 +150,31 @@ def test_resampling_tag_checked_without_nodata(make_project, monkeypatch):
     monkeypatch.setattr(v, "inspect", tagged)
     e = errs(validate(*make_project(raster={"nodata": None})))
     assert "no-data" in e and "average" in e
+
+
+def test_single_map_accepts_a_plain_slug(make_project):
+    rep = validate(*make_project(event_over={"event": "indre-et-loire-2025", "data_shape": "single-map"}))
+    assert rep.ok, rep.errors
+
+
+@pytest.mark.parametrize("over", [{"event": "indre-et-loire-2025"},
+                                  {"event": "indre-et-loire-2025", "data_shape": "event"}])
+def test_plain_slug_is_refused_unless_single_map(make_project, over):
+    assert not validate(*make_project(event_over=over)).ok
+
+
+def test_unknown_data_shape_is_refused(make_project):
+    assert not validate(*make_project(event_over={"event": "indre-et-loire-2025", "data_shape": "timeseries"})).ok
+
+
+def test_single_map_still_needs_start(make_project):
+    project_yaml, event_yaml = make_project(event_over={"event": "indre-et-loire-2025", "data_shape": "single-map"})
+    doc = yaml.safe_load(event_yaml.read_text())
+    del doc["start"]
+    event_yaml.write_text(yaml.safe_dump(doc))
+    rep = validate(project_yaml, event_yaml)
+    assert not rep.ok and "start" in errs(rep)
+
+
+def test_single_map_refuses_an_event_slug_that_is_not_a_slug(make_project):
+    assert not validate(*make_project(event_over={"event": "Indre_2025", "data_shape": "single-map"})).ok

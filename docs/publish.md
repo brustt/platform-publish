@@ -1,6 +1,6 @@
 # Publishing a result with `platform-publish`
 
-> Applies to **platform-publish v0.2.1**. To read the page for another version, open this file at that git tag
+> Applies to **platform-publish v0.2.2**. To read the page for another version, open this file at that git tag
 > (GitHub: switch the branch/tag selector). Changes between versions are listed in [`CHANGELOG.md`](../CHANGELOG.md).
 
 `platform-publish` checks your result files and uploads them to the Platform bucket as static STAC.
@@ -10,9 +10,9 @@ You never write STAC: the root catalog, your Project's Collection and the Event'
 ## 1. Install
 
 ```bash
-pip install git+https://github.com/brustt/platform-publish@v0.2.0
+pip install git+https://github.com/brustt/platform-publish@v0.2.2
 # or, for a non-Python Project:
-pipx install git+https://github.com/brustt/platform-publish@v0.2.0
+pipx install git+https://github.com/brustt/platform-publish@v0.2.2
 ```
 
 ## 2. Credentials

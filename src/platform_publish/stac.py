@@ -101,6 +101,8 @@ def build_item(project: dict, event: dict, rasters: dict, root: str, updated: st
     }
     if event.get("description"):
         props["description"] = event["description"]
+    if event.get("data_shape"):
+        props["brustt:data_shape"] = event["data_shape"]
     if event.get("compare"):
         props["brustt:compare"] = {"before": event["compare"][0], "after": event["compare"][1]}
     return {

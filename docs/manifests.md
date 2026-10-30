@@ -1,6 +1,6 @@
 # What the manifests must contain
 
-> Applies to **platform-publish v0.2.0**. The source of truth is `src/platform_publish/schema.json` and `validate.py`;
+> Applies to **platform-publish v0.2.2**. The source of truth is `src/platform_publish/schema.json` and `validate.py`;
 > this page is the same rules in one place. For the whole publishing flow see [publish.md](publish.md).
 
 A Project repo holds two kinds of manifest, next to each other:
@@ -41,6 +41,7 @@ newer version fails `validate` instead of being ignored.
 | `start`, `end` | **required** | `YYYY-MM-DD`, the dates of the event itself, not of the imagery. `start` must not be after `end`. |
 | `layers` | **required** | At least one Layer, listed bottom first (draw order). Slugs unique. **At least one must have `role: result`.** |
 | `description` | optional | Non-empty text. |
+| `data_shape` | optional | `event` (default) or `single-map`. With `single-map`, `event` is a plain kebab-case slug (`indre-et-loire-2025`) instead of `<place>-<yyyy>-<mm>`; `start` and `end` stay required. Written to the Item as `brustt:data_shape` only when set. `scaffold` does not produce it: add it by hand. |
 | `compare` | optional | Exactly two Layer slugs, before then after. Both must exist in `layers`. |
 
 ### Layer level

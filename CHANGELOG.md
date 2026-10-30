@@ -3,6 +3,10 @@
 Contract changes are additive only. Update `docs/publish.md` in the same change as any behaviour change,
 and bump its "Applies to" line at release.
 
+## v0.2.2 (2026-10-30)
+- `data_shape` (optional Event field): `event` or `single-map`. With `single-map`, `event` is a plain slug instead of
+  `<place>-<yyyy>-<mm>`. The Item carries `brustt:data_shape` only when it is set. `scaffold` does not produce it.
+
 ## v0.2.1 (2026-10-30)
 - `scaffold` command: writes or updates `project.yaml` and `<event>.publish.yaml` interactively from the files in
   `outputs/<event>/`, keeps Layers already listed, runs `validate`. `--event`, `--outputs`, `--yes`.
