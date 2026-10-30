@@ -1,6 +1,6 @@
 # Publishing a result with `platform-publish`
 
-> Applies to **platform-publish v0.2.0**. To read the page for another version, open this file at that git tag
+> Applies to **platform-publish v0.2.1**. To read the page for another version, open this file at that git tag
 > (GitHub: switch the branch/tag selector). Changes between versions are listed in [`CHANGELOG.md`](../CHANGELOG.md).
 
 `platform-publish` checks your result files and uploads them to the Platform bucket as static STAC.
